@@ -7,6 +7,9 @@ from app.api.v1.roles import router as roles_router
 from app.api.v1.audit_logs import router as audit_logs_router
 from app.api.v1.sponsors import router as sponsors_router
 from app.api.v1.accommodation import router as accommodation_router
+from app.api.v1.medical import router as medical_router
+from app.api.v1.education import router as education_router
+from app.api.v1.case_management import router as case_management_router
 
 app = FastAPI(
     title="CCMS - Child Care Management System",
@@ -20,6 +23,9 @@ app.include_router(roles_router)
 app.include_router(audit_logs_router)
 app.include_router(sponsors_router)
 app.include_router(accommodation_router)
+app.include_router(medical_router)
+app.include_router(education_router)
+app.include_router(case_management_router)
 
 
 @app.get("/")
