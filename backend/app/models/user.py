@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import String, DateTime, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -40,3 +40,12 @@ class User(Base):
         DateTime,
         default=datetime.utcnow
     )
+
+    roles: Mapped[list["Role"]] = relationship(
+        secondary="user_roles",
+        back_populates="users",
+        lazy="selectin",
+    )
+
+
+from app.models.role import Role  # noqa: E402  (resolves the relationship type)

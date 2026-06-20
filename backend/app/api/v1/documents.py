@@ -6,9 +6,11 @@ import os
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db
+from app.core.deps import can_create_or_update, can_read, get_db, require_admin
 from app.models.document import Document
 from app.models.child import Child
+from app.models.user import User
+from app.services.audit import AuditAction, AuditModule, add_audit_log
 
 router = APIRouter()
 
@@ -18,7 +20,8 @@ def upload_document(
     child_id: int = Form(...),
     document_type: str = Form(...),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(can_create_or_update),
 ):
     child = db.query(Child).filter(
         Child.id == child_id
@@ -102,6 +105,20 @@ def upload_document(
     )
 
     db.add(document)
+    db.flush()
+    add_audit_log(
+        db,
+        user_id=current_user.id,
+        action=AuditAction.CREATE,
+        module=AuditModule.DOCUMENTS,
+        record_id=document.id,
+        new_values={
+            "child_id": child_id,
+            "document_type": document_type,
+            "original_filename": file.filename,
+            "is_verified": False,
+        },
+    )
     db.commit()
     db.refresh(document)
 
@@ -111,7 +128,8 @@ def upload_document(
 @router.get("/children/{child_id}/documents")
 def get_child_documents(
     child_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(can_read),
 ):
     child = db.query(Child).filter(
         Child.id == child_id
@@ -133,7 +151,8 @@ def get_child_documents(
 @router.post("/documents/{document_id}/verify")
 def verify_document(
     document_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(can_create_or_update),
 ):
     document = db.query(Document).filter(
         Document.id == document_id
@@ -146,6 +165,16 @@ def verify_document(
         )
 
     document.is_verified = True
+
+    add_audit_log(
+        db,
+        user_id=current_user.id,
+        action=AuditAction.VERIFY,
+        module=AuditModule.DOCUMENTS,
+        record_id=document.id,
+        old_values={"is_verified": False},
+        new_values={"is_verified": True},
+    )
 
     db.commit()
     db.refresh(document)
@@ -160,7 +189,8 @@ def verify_document(
 @router.delete("/documents/{document_id}")
 def delete_document(
     document_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     document = db.query(Document).filter(
         Document.id == document_id
@@ -172,11 +202,27 @@ def delete_document(
             detail="Document not found"
         )
 
-    if os.path.exists(document.file_path):
-        os.remove(document.file_path)
+    file_path = document.file_path
+    old_values = {
+        "child_id": document.child_id,
+        "document_type": document.document_type,
+        "original_filename": document.original_filename,
+        "is_verified": document.is_verified,
+    }
 
     db.delete(document)
+    add_audit_log(
+        db,
+        user_id=current_user.id,
+        action=AuditAction.DELETE,
+        module=AuditModule.DOCUMENTS,
+        record_id=document_id,
+        old_values=old_values,
+    )
     db.commit()
+
+    if os.path.exists(file_path):
+        os.remove(file_path)
 
     return {
         "message": "Document deleted successfully",
@@ -187,7 +233,8 @@ def delete_document(
 @router.get("/children/{child_id}/admission-checklist")
 def admission_checklist(
     child_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(can_read),
 ):
     child = db.query(Child).filter(
         Child.id == child_id
