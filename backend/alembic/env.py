@@ -1,16 +1,20 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
+from sqlalchemy import create_engine
 from sqlalchemy import pool
 
 from alembic import context
 
 from app.core.database import Base
+from app.core.config import settings
 
 from app.models.child import Child
 from app.models.document import Document
 from app.models.user import User
 from app.models.role import Role, UserRole
+from app.models.audit_log import AuditLog
+from app.models.sponsor import Sponsor, ChildSponsorship
+from app.models.accommodation import Building, Block, Floor, Room, Bed, BedAllocation
 
 config = context.config
 
@@ -21,10 +25,8 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
-
     context.configure(
-        url=url,
+        url=settings.DATABASE_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -35,9 +37,8 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+    connectable = create_engine(
+        settings.DATABASE_URL,
         poolclass=pool.NullPool,
     )
 

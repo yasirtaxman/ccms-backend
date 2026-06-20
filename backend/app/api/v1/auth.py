@@ -1,9 +1,10 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 
-from app.core.deps import get_db
+from app.core.deps import get_current_user, get_db
 from app.core.security import (
     hash_password,
     verify_password,
@@ -16,8 +17,10 @@ from app.schemas.user import (
     UserCreate,
     UserLogin,
     UserResponse,
-    Token
+    CurrentUser,
+    Token,
 )
+from app.services.audit import AuditAction, AuditModule, add_audit_log
 
 router = APIRouter(
     prefix="/auth",
@@ -57,6 +60,20 @@ def register_user(
     )
 
     db.add(db_user)
+    db.flush()
+    add_audit_log(
+        db,
+        user_id=db_user.id,
+        action=AuditAction.CREATE,
+        module=AuditModule.USERS,
+        record_id=db_user.id,
+        new_values={
+            "full_name": db_user.full_name,
+            "username": db_user.username,
+            "email": db_user.email,
+            "is_active": db_user.is_active,
+        },
+    )
     db.commit()
     db.refresh(db_user)
 
@@ -71,26 +88,60 @@ def login(
     login_data: UserLogin,
     db: Session = Depends(get_db)
 ):
+    return _authenticate(login_data.username_or_email, login_data.password, db)
+
+
+@router.post(
+    "/token",
+    response_model=Token,
+    summary="OAuth2-compatible login for Swagger UI",
+)
+def oauth2_login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    return _authenticate(form_data.username, form_data.password, db)
+
+
+@router.get("/me", response_model=CurrentUser)
+def read_current_user(current_user: User = Depends(get_current_user)):
+    return CurrentUser(
+        id=current_user.id,
+        full_name=current_user.full_name,
+        username=current_user.username,
+        email=current_user.email,
+        is_active=current_user.is_active,
+        roles=[role.name for role in current_user.roles],
+    )
+
+
+def _authenticate(username_or_email: str, password: str, db: Session) -> dict[str, str]:
     user = db.query(User).filter(
         or_(
-            User.username == login_data.username_or_email,
-            User.email == login_data.username_or_email
+            User.username == username_or_email,
+            User.email == username_or_email,
         )
     ).first()
 
     if not user:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
 
     if not verify_password(
-        login_data.password,
+        password,
         user.password_hash
     ):
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is disabled",
         )
 
     access_token = create_access_token(
@@ -99,6 +150,16 @@ def login(
             "user_id": user.id
         }
     )
+
+    add_audit_log(
+        db,
+        user_id=user.id,
+        action=AuditAction.LOGIN,
+        module=AuditModule.AUTH,
+        record_id=user.id,
+        new_values={"username": user.username},
+    )
+    db.commit()
 
     return {
         "access_token": access_token,

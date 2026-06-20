@@ -1,7 +1,7 @@
 from datetime import datetime, date
 
 from sqlalchemy import String, Date, DateTime, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -51,3 +51,10 @@ class Child(Base):
         DateTime,
         default=datetime.utcnow
     )
+
+    sponsorships: Mapped[list["ChildSponsorship"]] = relationship(
+        back_populates="child"
+    )
+
+
+from app.models.sponsor import ChildSponsorship  # noqa: E402
