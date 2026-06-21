@@ -8,11 +8,12 @@ from app.services.audit import AuditAction, AuditModule, add_audit_log
 from app.services.dashboard_service import child_complete_profile
 from app.services.excel_service import build_excel_report
 from app.services.pdf_service import build_pdf_report
+from app.core.config import settings
 
 router=APIRouter(prefix="/exports",tags=["Exports"])
 REPORTS={"children":report_service.children_report,"sponsors":report_service.sponsors_report,"sponsorships":report_service.sponsorships_report,"accommodation":report_service.accommodation_report,"medical":report_service.medical_report,"education":report_service.education_report,"case-management":report_service.case_report}
 def export(db,user,name,kind):
-    report=REPORTS[name](db,user.username,limit=5000,offset=0); rows=report.data
+    report=REPORTS[name](db,user.username,limit=settings.EXPORT_MAX_ROWS,offset=0); rows=report.data
     stream=build_excel_report(name.replace("-"," ").title(),rows,user.username,report.filters_applied) if kind=="xlsx" else build_pdf_report(name.replace("-"," ").title(),rows,user.username,report.filters_applied)
     add_audit_log(db,user_id=user.id,action=AuditAction.EXPORT_EXCEL if kind=="xlsx" else AuditAction.EXPORT_PDF,module=AuditModule.IMPORT_EXPORT,new_values={"report_type":name,"filters":report.filters_applied}); db.commit()
     media="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if kind=="xlsx" else "application/pdf"

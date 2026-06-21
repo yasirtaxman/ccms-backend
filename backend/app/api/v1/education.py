@@ -37,6 +37,7 @@ from app.schemas.education import (
     SchoolUpdate,
 )
 from app.services.audit import AuditAction, AuditModule, add_audit_log
+from app.utils.files import enforce_upload_size, safe_upload_directory, sanitize_filename
 
 router = APIRouter(tags=["Education"])
 ALLOWED_EDUCATION_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
@@ -286,14 +287,14 @@ def upload_education_document(
         education_record = record_or_404(db, EducationRecord, education_record_id, "Education record")
         if education_record.child_id != child_id:
             raise HTTPException(status_code=422, detail="Education record does not belong to child")
-    original_name = Path(file.filename or "").name
+    original_name = sanitize_filename(file.filename)
+    enforce_upload_size(file)
     extension = Path(original_name).suffix.lower()
     if not original_name or len(original_name) > 200:
         raise HTTPException(status_code=422, detail="Invalid filename")
     if extension not in ALLOWED_EDUCATION_EXTENSIONS:
         raise HTTPException(status_code=422, detail="Education documents accept PDF, JPG, JPEG, or PNG")
-    folder = Path("uploads") / child.child_id / "education"
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = safe_upload_directory(child.child_id, "education")
     stored_name = f"{uuid.uuid4().hex}_{original_name}"
     file_path = folder / stored_name
     try:

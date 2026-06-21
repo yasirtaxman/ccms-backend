@@ -2,9 +2,9 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class UserCreate(BaseModel):
-    full_name: str
+    full_name: str | None
     username: str
-    email: EmailStr
+    email: EmailStr | None
     password: str
 
 

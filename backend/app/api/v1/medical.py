@@ -36,6 +36,7 @@ from app.schemas.medical import (
     VaccinationUpdate,
 )
 from app.services.audit import AuditAction, AuditModule, add_audit_log
+from app.utils.files import enforce_upload_size, safe_upload_directory, sanitize_filename
 
 router = APIRouter(tags=["Medical"])
 ALLOWED_MEDICAL_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
@@ -271,15 +272,15 @@ def upload_medical_document(
         visit = record_or_404(db, MedicalVisit, medical_visit_id, "Medical visit")
         if visit.child_id != child_id:
             raise HTTPException(status_code=422, detail="Medical visit does not belong to child")
-    original_name = Path(file.filename or "").name
+    original_name = sanitize_filename(file.filename)
+    enforce_upload_size(file)
     extension = Path(original_name).suffix.lower()
     if not original_name or len(original_name) > 200:
         raise HTTPException(status_code=422, detail="Invalid filename")
     if extension not in ALLOWED_MEDICAL_EXTENSIONS:
         raise HTTPException(status_code=422, detail="Medical documents accept PDF, JPG, JPEG, or PNG")
 
-    folder = Path("uploads") / child.child_id / "medical"
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = safe_upload_directory(child.child_id, "medical")
     stored_name = f"{uuid.uuid4().hex}_{original_name}"
     file_path = folder / stored_name
     try:

@@ -8,10 +8,12 @@ from app.schemas.import_export import ImportCommitResponse, ImportPreviewRespons
 from app.services.audit import AuditAction, AuditModule, add_audit_log
 from app.services.excel_service import build_child_import_template
 from app.services.import_service import parse_upload, validate_rows
+from app.utils.files import enforce_upload_size, sanitize_filename
 
 router=APIRouter(prefix="/imports",tags=["Imports"])
 async def load(file):
-    try: return parse_upload(file.filename or "",await file.read())
+    enforce_upload_size(file)
+    try: return parse_upload(sanitize_filename(file.filename),await file.read())
     except ValueError as exc: raise HTTPException(422,str(exc)) from exc
 @router.get("/templates/children.xlsx")
 def template(_:User=Depends(can_create_or_update)): return StreamingResponse(build_child_import_template(),media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",headers={"Content-Disposition":'attachment; filename="ccms-children-import-template.xlsx"'})

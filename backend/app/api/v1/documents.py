@@ -11,6 +11,7 @@ from app.models.document import Document
 from app.models.child import Child
 from app.models.user import User
 from app.services.audit import AuditAction, AuditModule, add_audit_log
+from app.utils.files import enforce_upload_size, safe_upload_directory, sanitize_filename
 
 router = APIRouter()
 
@@ -43,7 +44,9 @@ def upload_document(
         "Child Photo": [".jpg", ".jpeg", ".png"]
     }
 
-    file_extension = Path(file.filename).suffix.lower()
+    original_name = sanitize_filename(file.filename)
+    enforce_upload_size(file)
+    file_extension = Path(original_name).suffix.lower()
 
     if document_type not in allowed_extensions:
         raise HTTPException(
@@ -72,19 +75,10 @@ def upload_document(
         "misc"
     )
 
-    child_folder = (
-        Path("uploads")
-        / child.child_id
-        / document_folder
-    )
-
-    child_folder.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    child_folder = safe_upload_directory(child.child_id, document_folder)
 
     unique_filename = (
-        f"{uuid.uuid4()}_{file.filename}"
+        f"{uuid.uuid4()}_{original_name}"
     )
 
     file_path = child_folder / unique_filename
@@ -98,7 +92,7 @@ def upload_document(
     document = Document(
         child_id=child_id,
         document_type=document_type,
-        original_filename=file.filename,
+        original_filename=original_name,
         stored_filename=unique_filename,
         file_path=str(file_path),
         is_verified=False
@@ -115,7 +109,7 @@ def upload_document(
         new_values={
             "child_id": child_id,
             "document_type": document_type,
-            "original_filename": file.filename,
+            "original_filename": original_name,
             "is_verified": False,
         },
     )
