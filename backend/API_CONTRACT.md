@@ -39,5 +39,6 @@ Errors use `success: false`, `data: null`, and an `errors` array containing `fie
 - Reports: `/reports/consolidated/*`; pagination uses `limit` and `offset`, with endpoint-specific query filters.
 - Imports: template download and multipart `file` upload at `/imports/children/preview` and `/imports/children/commit`.
 - Exports: authenticated `.xlsx` and `.pdf` endpoints under `/exports`.
+- Daily child attendance: individual history under `/children/{id}/daily-attendance`; register operations under `/daily-attendance`; transactional bulk marking at `/daily-attendance/bulk-mark`; today/dashboard summaries and daily/monthly reports. This is organization presence attendance and is separate from academic Education Attendance.
 
 File uploads use `multipart/form-data`, restricted extensions, sanitized filenames, configured size limits, and server-controlled storage paths. Frontend menus should use `/users/me/permissions`, not hardcoded assumptions alone.

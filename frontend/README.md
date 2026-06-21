@@ -47,3 +47,7 @@ npm run start
 ```
 
 Phase 9 deliberately leaves module CRUD pages as polished placeholders. Subsequent phases can implement each workspace using the existing shell, API client, auth state, permissions, loading states, and error patterns.
+
+## Children and daily attendance
+
+Phase 10 implements the Children workspace at `/dashboard/children`, including create/edit/profile, admission documents, imports, authenticated exports, and daily organization presence attendance. Daily attendance is separate from academic Education Attendance. Admin and Manager receive full operational controls, Data Entry Operator can maintain records and preview imports, and Viewer receives read-only screens.

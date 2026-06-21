@@ -1,0 +1,2 @@
+import { ChildForm } from "@/components/children/ChildForm";import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+export default function NewChildPage(){return <ProtectedRoute roles={["Admin","Manager","Data Entry Operator"]}><div className="space-y-6"><div><p className="eyebrow">Child management</p><h1 className="page-title">Add child</h1><p className="page-subtitle">Create a complete enrollment and admission record.</p></div><ChildForm/></div></ProtectedRoute>}

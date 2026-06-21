@@ -26,7 +26,9 @@ api.interceptors.response.use((response) => {
 export function apiErrorMessage(error: unknown): string {
   if (!axios.isAxiosError(error)) return "Something went wrong. Please try again.";
   const body = error.response?.data as { message?: string; detail?: string; errors?: { message: string }[] } | undefined;
-  return body?.message || body?.detail || body?.errors?.[0]?.message || "Unable to complete the request.";
+  if (!error.response) return `Backend server is not reachable at ${API_BASE_URL}.`;
+  if (error.response.status === 403) return "You do not have permission to perform this action.";
+  return body?.errors?.[0]?.message || body?.detail || body?.message || "Unable to complete the request.";
 }
 
 export function loginErrorMessage(error: unknown): string {

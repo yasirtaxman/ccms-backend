@@ -17,6 +17,7 @@ from app.models.medication import Medication
 from app.models.school import School
 from app.models.sponsor import ChildSponsorship, Sponsor
 from app.models.vaccination import Vaccination
+from app.models.child_attendance import DailyChildAttendance
 from app.schemas.dashboard import (
     AccommodationSummary, AlertGroup, AlertsDashboardResponse, AlertsSummary,
     CaseManagementSummary, ChildCompleteProfileSummaryResponse, ChildrenSummary,
@@ -238,12 +239,14 @@ def alert_references(db: Session, detailed: bool) -> AlertsDashboardResponse:
         "critical_incidents": c["critical_incidents"],
         "critical_risk_children": count_model(db, ChildCaseProfile, ChildCaseProfile.deleted_at.is_(None), ChildCaseProfile.risk_level == "Critical"),
         "children_with_critical_welfare_status": count_model(db, ChildCaseProfile, ChildCaseProfile.deleted_at.is_(None), ChildCaseProfile.welfare_status == "Critical"),
+        "children_missing_today": count_model(db, DailyChildAttendance, DailyChildAttendance.attendance_date == date.today(), DailyChildAttendance.status == "Missing", DailyChildAttendance.deleted_at.is_(None)),
     }
     warning = {
         "high_risk_children": count_model(db, ChildCaseProfile, ChildCaseProfile.deleted_at.is_(None), ChildCaseProfile.risk_level == "High"),
         "upcoming_vaccinations": c["upcoming_vaccinations"], "active_medications": c["active_medications"],
         "children_without_beds": c["without_bed"], "children_without_sponsors": c["without_sponsor"],
         "pending_follow_ups": c["pending_followups"], "pending_incident_reviews": c["pending_incidents"],
+        "unauthorized_absences_today": count_model(db, DailyChildAttendance, DailyChildAttendance.attendance_date == date.today(), DailyChildAttendance.status == "Unauthorized Absence", DailyChildAttendance.deleted_at.is_(None)),
     }
     info = {"upcoming_case_reviews": c["upcoming_reviews"], "upcoming_counseling_sessions": c["upcoming_counseling"],
             "expiring_sponsorships": c["expiring_sponsorships"],

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.child import Child
 from app.schemas.child import ChildCreate, ChildUpdate
-from app.core.deps import can_create_or_update, can_read, get_db
+from app.core.deps import can_create_or_update, can_operational_read, get_db
 from app.models.user import User
 from app.services.audit import AuditAction, AuditModule, add_audit_log
 
@@ -37,7 +37,7 @@ def create_child(
 @router.get("/children")
 def get_children(
     db: Session = Depends(get_db),
-    _current_user: User = Depends(can_read),
+    _current_user: User = Depends(can_operational_read),
 ):
     children = db.query(Child).all()
 
@@ -48,7 +48,7 @@ def get_children(
 def get_child(
     child_id: int,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(can_read),
+    _current_user: User = Depends(can_operational_read),
 ):
     child = db.query(Child).filter(
         Child.id == child_id

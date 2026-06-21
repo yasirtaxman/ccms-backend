@@ -24,6 +24,7 @@ from app.api.v1.exports import router as exports_router
 from app.api.v1.imports import router as imports_router
 from app.api.v1.users import router as users_router
 from app.api.v1.system import router as system_router
+from app.api.v1.child_attendance import router as child_attendance_router
 
 TAGS_METADATA = [{"name": name} for name in ["Authentication","Users","Roles","Children","Documents","Sponsors","Accommodation","Medical","Education","Case Management","Dashboards and Search","Consolidated Reports","Exports","Imports","System","Audit Logs"]]
 
@@ -59,6 +60,7 @@ app.include_router(exports_router)
 app.include_router(imports_router)
 app.include_router(users_router)
 app.include_router(system_router)
+app.include_router(child_attendance_router)
 
 
 @app.get("/")

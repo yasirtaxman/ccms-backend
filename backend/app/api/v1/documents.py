@@ -6,7 +6,7 @@ import os
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import can_create_or_update, can_read, get_db, require_admin
+from app.core.deps import can_create_or_update, can_operational_read, get_db, require_admin
 from app.models.document import Document
 from app.models.child import Child
 from app.models.user import User
@@ -123,7 +123,7 @@ def upload_document(
 def get_child_documents(
     child_id: int,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(can_read),
+    _current_user: User = Depends(can_operational_read),
 ):
     child = db.query(Child).filter(
         Child.id == child_id
@@ -228,7 +228,7 @@ def delete_document(
 def admission_checklist(
     child_id: int,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(can_read),
+    _current_user: User = Depends(can_operational_read),
 ):
     child = db.query(Child).filter(
         Child.id == child_id
