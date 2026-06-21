@@ -27,8 +27,8 @@ from app.schemas.dashboard import (
 )
 
 REQUIRED_DOCUMENT_TYPES = {
-    "Admission Form", "Affidavit", "Death Certificate", "Father CNIC",
-    "Guardian CNIC", "Birth Certificate", "Child Photo",
+    "Admission Form", "Child Photo", "Birth Certificate / Form-B", "Guardian CNIC",
+    "Father Death Certificate", "Medical Certificate",
 }
 
 

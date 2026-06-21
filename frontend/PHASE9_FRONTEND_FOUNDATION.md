@@ -35,6 +35,6 @@ The backend compatibility suite is run separately from `backend` with `python -m
 
 ## Known limitations and next phases
 
-Module pages are placeholders, charts are intentionally omitted, and password-change UI is deferred. Next phases should implement CRUD workspaces module by module, add notification/toast infrastructure and end-to-end browser tests, and evaluate secure httpOnly token delivery for production.
+Phase 10 supersedes the original route stubs with authenticated, data-backed module workspaces. Charts remain intentionally omitted; future work may add notification infrastructure, end-to-end browser tests, and secure httpOnly token delivery for production.
 
 At validation time, `npm audit --omit=dev` reported two moderate advisories in the PostCSS version bundled by Next.js 16.2.9. npm offered only a forced downgrade to an obsolete major Next.js release, so no unsafe automated downgrade was applied. Recheck the advisory when the next compatible Next.js patch is available.

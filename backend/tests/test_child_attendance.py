@@ -34,3 +34,24 @@ def test_bulk_mark_upsert_validation_rbac_and_alerts(client,db_session):
     assert client.post("/daily-attendance/bulk-mark",json=request,headers=viewer_headers).status_code==403
     alerts=client.get("/dashboard/alerts",headers=viewer_headers).json();assert alerts["critical_alerts"]["counts"]["children_missing_today"]==1;assert alerts["warning_alerts"]["counts"]["unauthorized_absences_today"]==1
     assert db_session.query(AuditLog).filter_by(action="DAILY_ATTENDANCE_BULK_MARK").count()==2
+
+def test_attendance_exports_and_accommodation_fields(client,db_session):
+    manager=make_user(db_session,"attendance-export-manager","Manager");child=make_child(db_session,"ATT-EXPORT");auth=headers(manager)
+    assert client.post(f"/children/{child.id}/daily-attendance",json=payload(),headers=auth).status_code==201
+    listed=client.get(f"/daily-attendance?date={date.today().isoformat()}",headers=auth).json()["data"][0]
+    assert {"building_name","block_name","floor_name","room_name","bed_code"}<=listed.keys()
+    monthly=client.get(f"/reports/monthly-child-attendance?month={date.today().month}&year={date.today().year}&child_id={child.id}",headers=auth).json()[0]
+    assert monthly["gender"]==child.gender and monthly["district"]==child.district
+    for path,signature in ((f"/exports/daily-attendance.pdf?date={date.today().isoformat()}",b"%PDF"),(f"/exports/monthly-child-attendance.pdf?month={date.today().month}&year={date.today().year}",b"%PDF")):
+        response=client.get(path,headers=auth);assert response.status_code==200,response.text;assert response.content.startswith(signature)
+    for path in (f"/exports/daily-attendance.xlsx?date={date.today().isoformat()}",f"/exports/monthly-child-attendance.xlsx?month={date.today().month}&year={date.today().year}"):
+        response=client.get(path,headers=auth);assert response.status_code==200,response.text;assert response.content.startswith(b"PK")
+
+def test_admission_document_types_and_checklist(client,db_session):
+    manager=make_user(db_session,"document-checklist-manager","Manager");child=make_child(db_session,"DOC-CHECK");auth=headers(manager)
+    definitions=client.get("/documents/admission-document-types",headers=auth)
+    assert definitions.status_code==200
+    assert [item["document_type"] for item in definitions.json() if item["required"]]==["Admission Form","Child Photo","Birth Certificate / Form-B","Guardian CNIC","Father Death Certificate","Medical Certificate"]
+    checklist=client.get(f"/children/{child.id}/documents/checklist",headers=auth)
+    assert checklist.status_code==200 and len(checklist.json())==9
+    assert all(item["status"]=="Missing" and item["uploaded_count"]==0 for item in checklist.json())

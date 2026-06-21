@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import can_create_or_update, can_operational_read, get_db, require_admin
 from app.models.child import Child
 from app.models.child_attendance import DailyChildAttendance
+from app.models.accommodation import Bed, BedAllocation, Block, Building, Floor, Room
 from app.models.user import User
 from app.schemas.child_attendance import (BulkAttendanceRequest,BulkAttendanceResponse,DashboardAttendanceResponse,DailyAttendanceCreate,DailyAttendanceResponse,DailyAttendanceUpdate,MonthlyAttendanceRow,PaginatedAttendanceResponse,TodayAttendanceChild,TodayAttendanceResponse)
 from app.services.audit import AuditAction,AuditModule,add_audit_log
@@ -24,9 +25,13 @@ def query_records(from_date=None,to_date=None,attendance_status=None,child_id=No
     if gender: stmt=stmt.where(Child.gender==gender)
     return stmt
 
-def response(record,child):
+def accommodation_locations(db, child_ids):
+    rows=db.execute(select(BedAllocation.child_id,Building.building_name,Block.block_name,Floor.floor_name,Room.room_name,Bed.bed_code).join(Bed,Bed.id==BedAllocation.bed_id).join(Room,Room.id==Bed.room_id).join(Floor,Floor.id==Room.floor_id).join(Block,Block.id==Floor.block_id).join(Building,Building.id==Block.building_id).where(BedAllocation.child_id.in_(child_ids),BedAllocation.status=="Active")).all() if child_ids else []
+    return {row[0]:{"building_name":row[1],"block_name":row[2],"floor_name":row[3],"room_name":row[4],"bed_code":row[5]} for row in rows}
+
+def response(record,child,location=None):
     values={column:getattr(record,column) for column in ("id","child_id","attendance_date","status","check_in_time","check_out_time","remarks","marked_by","created_by","updated_by","created_at","updated_at")}
-    values.update(child_code=child.child_id,child_name=child.full_name,gender=child.gender,district=child.district)
+    values.update(child_code=child.child_id,child_name=child.full_name,gender=child.gender,district=child.district,**(location or {"building_name":None,"block_name":None,"floor_name":None,"room_name":None,"bed_code":None}))
     return values
 
 @router.post("/children/{child_id}/daily-attendance",response_model=DailyAttendanceResponse,status_code=status.HTTP_201_CREATED)
@@ -50,7 +55,7 @@ def list_attendance(date_filter:date|None=Query(None,alias="date"),from_date:dat
     if date_filter: from_date=to_date=date_filter
     stmt=query_records(from_date,to_date,status_filter,child_id);total=db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     rows=db.execute(stmt.order_by(DailyChildAttendance.attendance_date.desc(),Child.full_name).offset(offset).limit(limit)).all()
-    return {"data":[response(r,c) for r,c in rows],"total":total,"limit":limit,"offset":offset}
+    locations=accommodation_locations(db,[c.id for _,c in rows]);return {"data":[response(r,c,locations.get(c.id)) for r,c in rows],"total":total,"limit":limit,"offset":offset}
 
 @router.put("/daily-attendance/{attendance_id}",response_model=DailyAttendanceResponse)
 def update(attendance_id:int,payload:DailyAttendanceUpdate,db:Session=Depends(get_db),user:User=Depends(can_create_or_update)):
@@ -90,21 +95,21 @@ def bulk_mark(payload:BulkAttendanceRequest,db:Session=Depends(get_db),user:User
 def today(db:Session=Depends(get_db),_:User=Depends(can_operational_read)):
     target=date.today();summary=today_summary(db,target)
     rows=db.execute(select(Child,DailyChildAttendance).outerjoin(DailyChildAttendance,and_(DailyChildAttendance.child_id==Child.id,DailyChildAttendance.attendance_date==target,DailyChildAttendance.deleted_at.is_(None))).where(Child.status=="Active").order_by(Child.full_name)).all()
-    records=[TodayAttendanceChild(child_id=c.id,child_code=c.child_id,full_name=c.full_name,gender=c.gender,district=c.district,attendance_id=a.id if a else None,status=a.status if a else None,check_in_time=a.check_in_time if a else None,check_out_time=a.check_out_time if a else None,remarks=a.remarks if a else None) for c,a in rows]
+    locations=accommodation_locations(db,[c.id for c,_ in rows]);records=[TodayAttendanceChild(child_id=c.id,child_code=c.child_id,full_name=c.full_name,gender=c.gender,district=c.district,**(locations.get(c.id) or {}),attendance_id=a.id if a else None,status=a.status if a else None,check_in_time=a.check_in_time if a else None,check_out_time=a.check_out_time if a else None,remarks=a.remarks if a else None) for c,a in rows]
     return {"attendance_date":target,"records":records,**summary}
 
 @router.get("/reports/daily-attendance",response_model=list[dict])
 def daily_report(from_date:date|None=None,to_date:date|None=None,status_filter:str|None=Query(None,alias="status"),child_id:int|None=None,district:str|None=None,gender:str|None=None,db:Session=Depends(get_db),_:User=Depends(can_operational_read)):
-    rows=db.execute(query_records(from_date,to_date,status_filter,child_id,district,gender).order_by(DailyChildAttendance.attendance_date.desc(),Child.full_name).limit(5000)).all();return [response(r,c) for r,c in rows]
+    rows=db.execute(query_records(from_date,to_date,status_filter,child_id,district,gender).order_by(DailyChildAttendance.attendance_date.desc(),Child.full_name).limit(5000)).all();locations=accommodation_locations(db,[c.id for _,c in rows]);return [response(r,c,locations.get(c.id)) for r,c in rows]
 
 @router.get("/reports/monthly-child-attendance",response_model=list[MonthlyAttendanceRow])
 def monthly_report(month:int=Query(...,ge=1,le=12),year:int=Query(...,ge=2000,le=2100),child_id:int|None=None,db:Session=Depends(get_db),_:User=Depends(can_operational_read)):
     start=date(year,month,1);end=date(year,month,monthrange(year,month)[1]);status_col=DailyChildAttendance.status
-    stmt=select(Child.id,Child.child_id,Child.full_name,func.sum(case((status_col=="Present",1),else_=0)),func.sum(case((status_col=="Absent",1),else_=0)),func.sum(case((status_col=="On Leave",1),else_=0)),func.sum(case((status_col=="Medical Leave",1),else_=0)),func.sum(case((status_col=="Home Visit",1),else_=0)),func.sum(case((status_col=="Unauthorized Absence",1),else_=0)),func.sum(case((status_col=="Missing",1),else_=0)),func.count(DailyChildAttendance.id)).join(DailyChildAttendance,DailyChildAttendance.child_id==Child.id).where(DailyChildAttendance.attendance_date.between(start,end),DailyChildAttendance.deleted_at.is_(None)).group_by(Child.id,Child.child_id,Child.full_name)
+    stmt=select(Child.id,Child.child_id,Child.full_name,Child.gender,Child.district,func.sum(case((status_col=="Present",1),else_=0)),func.sum(case((status_col=="Absent",1),else_=0)),func.sum(case((status_col=="On Leave",1),else_=0)),func.sum(case((status_col=="Medical Leave",1),else_=0)),func.sum(case((status_col=="Home Visit",1),else_=0)),func.sum(case((status_col=="Unauthorized Absence",1),else_=0)),func.sum(case((status_col=="Missing",1),else_=0)),func.count(DailyChildAttendance.id)).join(DailyChildAttendance,DailyChildAttendance.child_id==Child.id).where(DailyChildAttendance.attendance_date.between(start,end),DailyChildAttendance.deleted_at.is_(None)).group_by(Child.id,Child.child_id,Child.full_name,Child.gender,Child.district)
     if child_id: stmt=stmt.where(Child.id==child_id)
     result=[]
     for row in db.execute(stmt.order_by(Child.full_name)):
-        present,absent,leave,medical,home,unauthorized,missing,total=[int(v or 0) for v in row[3:]];result.append({"child_id":row[0],"child_code":row[1],"child_name":row[2],"present_days":present,"absent_days":absent,"leave_days":leave,"medical_leave_days":medical,"home_visit_days":home,"unauthorized_absence_days":unauthorized,"missing_days":missing,"attendance_percentage":round(present*100/total,2) if total else 0})
+        present,absent,leave,medical,home,unauthorized,missing,total=[int(v or 0) for v in row[5:]];result.append({"child_id":row[0],"child_code":row[1],"child_name":row[2],"gender":row[3],"district":row[4],"present_days":present,"absent_days":absent,"leave_days":leave,"medical_leave_days":medical,"home_visit_days":home,"unauthorized_absence_days":unauthorized,"missing_days":missing,"attendance_percentage":round(present*100/total,2) if total else 0})
     return result
 
 @router.get("/dashboard/daily-attendance",response_model=DashboardAttendanceResponse)

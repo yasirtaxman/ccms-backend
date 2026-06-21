@@ -15,7 +15,7 @@ from app.models.school import School
 from app.models.sponsor import ChildSponsorship,Sponsor
 from app.models.vaccination import Vaccination
 
-REQUIRED_DOCUMENTS={"Admission Form","Affidavit","Death Certificate","Father CNIC","Guardian CNIC","Birth Certificate","Child Photo"}
+REQUIRED_DOCUMENTS={"Admission Form","Child Photo","Birth Certificate / Form-B","Guardian CNIC","Father Death Certificate","Medical Certificate"}
 
 def _age(born:date,today:date)->int:return today.year-born.year-((today.month,today.day)<(born.month,born.day))
 def _mask(value:str|None,visible:int=4)->str:
@@ -72,4 +72,5 @@ def build_full_child_profile(db:Session,child_id:int,roles:set[str])->dict:
     sections.append({"key":"case_management","title":"10. Case Management Summary","fields":case_fields,"empty":"No case profile found." if not case_profile else None})
     sections.append({"key":"daily_attendance","title":"11. Daily Attendance Summary","fields":_fields(today_status=today_status or "Not marked",current_month_present_days=present_days,current_month_absent_days=daily_counts.get("Absent",0),current_month_leave_days=leave_days,current_month_attendance_percentage=f"{present_days*100/marked_days:.2f}%" if marked_days else "Not available"),"columns":["Status","Days"],"rows":[[status,count] for status,count in sorted(daily_counts.items())],"empty":"No daily attendance records found for the current month." if not daily_counts else None})
     identity={"Child Name":child.full_name,"Child ID":child.child_id,"Admission File No":child.admission_file_no,"Status":child.status,"Gender":child.gender,"Age":_age(child.date_of_birth,today),"Date of Birth":child.date_of_birth,"Admission Date":child.admission_date,"District":child.district,"Province":child.province}
-    return {"child_id":child.id,"identity":identity,"sections":sections}
+    child_photo=next((document.file_path for document in reversed(documents) if document.document_type=="Child Photo"),None)
+    return {"child_id":child.id,"identity":identity,"sections":sections,"child_photo_path":child_photo}

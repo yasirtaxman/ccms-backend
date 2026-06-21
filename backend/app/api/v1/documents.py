@@ -15,6 +15,18 @@ from app.utils.files import enforce_upload_size, safe_upload_directory, sanitize
 
 router = APIRouter()
 
+ADMISSION_DOCUMENT_TYPES = [
+    {"document_type": "Admission Form", "required": True, "extensions": ["pdf"]},
+    {"document_type": "Child Photo", "required": True, "extensions": ["jpg", "jpeg", "png"]},
+    {"document_type": "Birth Certificate / Form-B", "required": True, "extensions": ["pdf", "jpg", "jpeg", "png"]},
+    {"document_type": "Guardian CNIC", "required": True, "extensions": ["pdf", "jpg", "jpeg", "png"]},
+    {"document_type": "Father Death Certificate", "required": True, "extensions": ["pdf", "jpg", "jpeg", "png"]},
+    {"document_type": "Medical Certificate", "required": True, "extensions": ["pdf", "jpg", "jpeg", "png"]},
+    {"document_type": "School / Education Record", "required": False, "extensions": ["pdf", "jpg", "jpeg", "png"]},
+    {"document_type": "Court / Legal Order", "required": False, "extensions": ["pdf", "jpg", "jpeg", "png"]},
+    {"document_type": "Other Supporting Document", "required": False, "extensions": ["pdf", "jpg", "jpeg", "png"]},
+]
+
 
 @router.post("/documents/upload")
 def upload_document(
@@ -34,15 +46,8 @@ def upload_document(
             detail="Child not found"
         )
 
-    allowed_extensions = {
-        "Admission Form": [".pdf"],
-        "Affidavit": [".pdf"],
-        "Death Certificate": [".pdf", ".jpg", ".jpeg", ".png"],
-        "Father CNIC": [".pdf", ".jpg", ".jpeg", ".png"],
-        "Guardian CNIC": [".pdf", ".jpg", ".jpeg", ".png"],
-        "Birth Certificate": [".pdf", ".jpg", ".jpeg", ".png"],
-        "Child Photo": [".jpg", ".jpeg", ".png"]
-    }
+    allowed_extensions = {item["document_type"]: [f'.{ext}' for ext in item["extensions"]] for item in ADMISSION_DOCUMENT_TYPES}
+    allowed_extensions.update({"Affidavit":[".pdf"],"Death Certificate":[".pdf",".jpg",".jpeg",".png"],"Father CNIC":[".pdf",".jpg",".jpeg",".png"],"Birth Certificate":[".pdf",".jpg",".jpeg",".png"]})
 
     original_name = sanitize_filename(file.filename)
     enforce_upload_size(file)
@@ -60,20 +65,7 @@ def upload_document(
             detail=f"{document_type} only accepts: {', '.join(allowed_extensions[document_type])}"
         )
 
-    folder_mapping = {
-        "Admission Form": "admission_forms",
-        "Affidavit": "affidavits",
-        "Death Certificate": "death_certificates",
-        "Father CNIC": "father_cnic",
-        "Guardian CNIC": "guardian_cnic",
-        "Birth Certificate": "birth_certificates",
-        "Child Photo": "child_photos"
-    }
-
-    document_folder = folder_mapping.get(
-        document_type,
-        "misc"
-    )
+    document_folder = document_type.lower().replace(" / ", "_").replace(" ", "_").replace("-", "_")
 
     child_folder = safe_upload_directory(child.child_id, document_folder)
 
@@ -244,36 +236,34 @@ def admission_checklist(
         Document.child_id == child_id
     ).all()
 
-    document_types = {
-        doc.document_type for doc in documents
-    }
+    checklist = _build_checklist(documents);document_types={doc.document_type for doc in documents}
+    return {"child_id": child.child_id, "admission_form":"Admission Form" in document_types,"affidavit":"Affidavit" in document_types,"death_certificate":"Death Certificate" in document_types,"father_cnic":"Father CNIC" in document_types,"guardian_cnic":"Guardian CNIC" in document_types,"birth_certificate":"Birth Certificate" in document_types,"child_photo":"Child Photo" in document_types,"items": checklist, "admission_complete": all(item["uploaded"] and item["verified"] for item in checklist if item["required"])}
 
-    admission_form = "Admission Form" in document_types
-    affidavit = "Affidavit" in document_types
-    death_certificate = "Death Certificate" in document_types
-    father_cnic = "Father CNIC" in document_types
-    guardian_cnic = "Guardian CNIC" in document_types
-    birth_certificate = "Birth Certificate" in document_types
-    child_photo = "Child Photo" in document_types
 
-    admission_complete = all([
-        admission_form,
-        affidavit,
-        death_certificate,
-        father_cnic,
-        guardian_cnic,
-        birth_certificate,
-        child_photo
-    ])
+@router.get("/documents/admission-document-types", tags=["Documents"])
+def admission_document_types(_current_user: User = Depends(can_operational_read)):
+    return ADMISSION_DOCUMENT_TYPES
 
-    return {
-        "child_id": child.child_id,
-        "admission_form": admission_form,
-        "affidavit": affidavit,
-        "death_certificate": death_certificate,
-        "father_cnic": father_cnic,
-        "guardian_cnic": guardian_cnic,
-        "birth_certificate": birth_certificate,
-        "child_photo": child_photo,
-        "admission_complete": admission_complete
-    }
+
+@router.get("/children/{child_id}/documents/checklist", tags=["Documents"])
+def document_checklist(child_id: int, db: Session = Depends(get_db), _current_user: User = Depends(can_operational_read)):
+    child = db.get(Child, child_id)
+    if child is None:
+        raise HTTPException(status_code=404, detail="Child not found")
+    return _build_checklist(db.query(Document).filter(Document.child_id == child_id).all())
+
+
+def _build_checklist(documents):
+    result = []
+    for definition in ADMISSION_DOCUMENT_TYPES:
+        matches = [doc for doc in documents if doc.document_type == definition["document_type"]]
+        latest = max(matches, key=lambda doc: doc.id) if matches else None
+        verified = any(doc.is_verified for doc in matches)
+        uploaded = bool(matches)
+        result.append({
+            "document_type": definition["document_type"], "required": definition["required"],
+            "uploaded": uploaded, "verified": verified, "uploaded_count": len(matches),
+            "latest_document_id": latest.id if latest else None,
+            "status": "Verified" if verified else "Pending verification" if uploaded else "Missing",
+        })
+    return result

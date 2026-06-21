@@ -1,5 +1,5 @@
 import { api } from "./api";
-import type { Child,ChildCompleteProfile,ChildCreatePayload,ChildDocument,ChildUpdatePayload,ImportCommit,ImportPreview } from "@/types/children";
+import type { AdmissionChecklistItem,AdmissionDocumentType,Child,ChildCompleteProfile,ChildCreatePayload,ChildDocument,ChildUpdatePayload,ImportCommit,ImportPreview } from "@/types/children";
 import type { AttendancePage,BulkAttendanceResult,DailyAttendance,MonthlyAttendance,TodayAttendanceSummary } from "@/types/attendance";
 export const childrenApi={
   list:async()=> (await api.get<Child[]>("/children")).data,
@@ -8,6 +8,8 @@ export const childrenApi={
   update:async(id:number,payload:ChildUpdatePayload)=> (await api.put<Child>(`/children/${id}`,payload)).data,
   summary:async(id:number)=> (await api.get<ChildCompleteProfile>(`/children/${id}/complete-profile-summary`)).data,
   documents:async(id:number)=> (await api.get<ChildDocument[]>(`/children/${id}/documents`)).data,
+  documentTypes:async()=> (await api.get<AdmissionDocumentType[]>("/documents/admission-document-types")).data,
+  documentChecklist:async(id:number)=> (await api.get<AdmissionChecklistItem[]>(`/children/${id}/documents/checklist`)).data,
   uploadDocument:async(id:number,type:string,file:File)=>{const form=new FormData();form.append("child_id",String(id));form.append("document_type",type);form.append("file",file);return (await api.post<ChildDocument>("/documents/upload",form)).data},
   verifyDocument:async(id:number)=>api.post(`/documents/${id}/verify`),deleteDocument:async(id:number)=>api.delete(`/documents/${id}`),
   previewImport:async(file:File)=>{const form=new FormData();form.append("file",file);return (await api.post<ImportPreview>("/imports/children/preview",form)).data},

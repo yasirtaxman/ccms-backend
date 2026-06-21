@@ -25,13 +25,13 @@ class DailyAttendanceResponse(AttendanceValues):
     model_config=ConfigDict(from_attributes=True)
 
 class AttendanceListItem(DailyAttendanceResponse):
-    child_code: str; child_name: str; gender: str; district: str
+    child_code: str; child_name: str; gender: str; district: str; building_name:str|None=None; block_name:str|None=None; floor_name:str|None=None; room_name:str|None=None; bed_code:str|None=None
 
 class PaginatedAttendanceResponse(BaseModel): data:list[AttendanceListItem]; total:int; limit:int; offset:int
 class BulkAttendanceResponse(BaseModel): created_count:int; updated_count:int; errors:list[dict]
-class TodayAttendanceChild(BaseModel): child_id:int; child_code:str; full_name:str; gender:str; district:str; attendance_id:int|None=None; status:AttendanceStatus|None=None; check_in_time:time|None=None; check_out_time:time|None=None; remarks:str|None=None
+class TodayAttendanceChild(BaseModel): child_id:int; child_code:str; full_name:str; gender:str; district:str; building_name:str|None=None; block_name:str|None=None; floor_name:str|None=None; room_name:str|None=None; bed_code:str|None=None; attendance_id:int|None=None; status:AttendanceStatus|None=None; check_in_time:time|None=None; check_out_time:time|None=None; remarks:str|None=None
 class TodayAttendanceResponse(BaseModel):
     attendance_date:date; today_total_children:int; today_present:int; today_absent:int; today_on_leave:int; today_medical_leave:int; today_home_visit:int; today_unauthorized_absence:int; today_missing:int; attendance_marked_today:int; attendance_pending_today:int; records:list[TodayAttendanceChild]
-class MonthlyAttendanceRow(BaseModel): child_id:int; child_code:str; child_name:str; present_days:int; absent_days:int; leave_days:int; medical_leave_days:int; home_visit_days:int; unauthorized_absence_days:int; missing_days:int; attendance_percentage:float
+class MonthlyAttendanceRow(BaseModel): child_id:int; child_code:str; child_name:str; gender:str; district:str; present_days:int; absent_days:int; leave_days:int; medical_leave_days:int; home_visit_days:int; unauthorized_absence_days:int; missing_days:int; attendance_percentage:float
 class DashboardAttendanceResponse(BaseModel):
     today_total_children:int; today_present:int; today_absent:int; today_on_leave:int; today_medical_leave:int; today_home_visit:int; today_unauthorized_absence:int; today_missing:int; attendance_marked_today:int; attendance_pending_today:int

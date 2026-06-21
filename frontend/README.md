@@ -27,7 +27,7 @@ The login form posts OAuth2 form data to `/auth/token`, stores the development t
 
 ## Structure
 
-- `app`: login, protected dashboard, unauthorized route, and professional module placeholders.
+- `app`: login, protected dashboard, unauthorized route, Children workflows, and data-backed module workspaces.
 - `components/auth`: provider, route protection, permission gate, and login form.
 - `components/layout`: responsive sidebar, topbar, shell, and user menu.
 - `hooks`: shared authentication and permission access.
@@ -46,7 +46,7 @@ npm run build
 npm run start
 ```
 
-Phase 9 deliberately leaves module CRUD pages as polished placeholders. Subsequent phases can implement each workspace using the existing shell, API client, auth state, permissions, loading states, and error patterns.
+Phase 10 connects every sidebar route to a useful workspace using the existing shell, API client, authenticated session, permission helpers, loading states, empty states, and error handling.
 
 ## Children and daily attendance
 

@@ -4,7 +4,8 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 def build_pdf_report(title, rows, username, filters):
@@ -31,14 +32,18 @@ def build_full_profile_pdf(profile:dict,username:str):
     for index in range(0,len(identity),2):
         row=[]
         for key,value in identity[index:index+2]:row.extend([para(key,label),para(value)])
-        while len(row)<4:row.extend([para("",label),para("")])
+        while len(row)<4:row.extend([Paragraph("",label),Paragraph("",normal)])
         identity_rows.append(row)
-    identity_table=Table(identity_rows,colWidths=[83,178.5,83,178.5]);identity_commands=[("GRID",(0,0),(-1,-1),.35,colors.HexColor("#C9D6E2")),("BACKGROUND",(0,0),(0,-1),colors.HexColor("#F2F6FA")),("BACKGROUND",(2,0),(2,-1),colors.HexColor("#F2F6FA")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),7),("RIGHTPADDING",(0,0),(-1,-1),7),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]
+    identity_table=Table(identity_rows,colWidths=[72,152,72,152]);identity_commands=[("GRID",(0,0),(-1,-1),.35,colors.HexColor("#C9D6E2")),("BACKGROUND",(0,0),(0,-1),colors.HexColor("#F2F6FA")),("BACKGROUND",(2,0),(2,-1),colors.HexColor("#F2F6FA")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),7),("RIGHTPADDING",(0,0),(-1,-1),7),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]
     status=str(profile["identity"].get("Status","")).lower();status_color={"active":"#DDF4E7","inactive":"#EDF0F3","draft":"#FFF1C7","discharged":"#E1ECFA","transferred":"#E1ECFA"}.get(status,"#EDF0F3")
     for row_index,row_items in enumerate([identity[i:i+2] for i in range(0,len(identity),2)]):
         for pair_index,(key,_value) in enumerate(row_items):
             if key=="Status":identity_commands.extend([("BACKGROUND",(pair_index*2+1,row_index),(pair_index*2+1,row_index),colors.HexColor(status_color)),("FONTNAME",(pair_index*2+1,row_index),(pair_index*2+1,row_index),"Helvetica-Bold")])
-    identity_table.setStyle(TableStyle(identity_commands));story.extend([identity_table,Spacer(1,12)])
+    identity_table.setStyle(TableStyle(identity_commands));photo_path=profile.get("child_photo_path");photo=Paragraph("<b>No Photo</b>",ParagraphStyle("NoPhoto",parent=small,alignment=TA_CENTER,textColor=colors.HexColor("#60758A")))
+    if photo_path and Path(photo_path).is_file():
+        try:photo=Image(photo_path,width=64,height=76)
+        except Exception:pass
+    identity_block=Table([[photo,identity_table]],colWidths=[75,448]);identity_block.setStyle(TableStyle([("BOX",(0,0),(0,0),.5,colors.HexColor("#C9D6E2")),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("ALIGN",(0,0),(0,0),"CENTER"),("LEFTPADDING",(0,0),(0,0),5),("RIGHTPADDING",(0,0),(0,0),5)]));story.extend([identity_block,Spacer(1,12)])
     for section in profile["sections"]:
         title=Table([[para(section["title"],ParagraphStyle("Section",parent=normal,fontName="Helvetica-Bold",fontSize=10,textColor=colors.HexColor("#174A7E")))]],colWidths=[523]);title.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#EAF2F9")),("BOX",(0,0),(-1,-1),.6,colors.HexColor("#AFC4D7")),("LEFTPADDING",(0,0),(-1,-1),9),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]));story.extend([title,Spacer(1,5)])
         fields=section.get("fields",[])
@@ -47,7 +52,7 @@ def build_full_profile_pdf(profile:dict,username:str):
             for index in range(0,len(fields),2):
                 row=[]
                 for key,value in fields[index:index+2]:row.extend([para(key,label),para(value)])
-                while len(row)<4:row.extend([para("",label),para("")])
+                while len(row)<4:row.extend([Paragraph("",label),Paragraph("",normal)])
                 field_rows.append(row)
             table=Table(field_rows,colWidths=[105,156.5,105,156.5]);table.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.4,colors.HexColor("#D3DEE8")),("INNERGRID",(0,0),(-1,-1),.3,colors.HexColor("#E2E9EF")),("BACKGROUND",(0,0),(0,-1),colors.HexColor("#F8FAFC")),("BACKGROUND",(2,0),(2,-1),colors.HexColor("#F8FAFC")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),7),("RIGHTPADDING",(0,0),(-1,-1),7),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]));story.append(table)
         if section.get("note"):story.extend([Spacer(1,4),para(section["note"],empty_style)])
@@ -59,4 +64,17 @@ def build_full_profile_pdf(profile:dict,username:str):
         story.append(Spacer(1,10))
     def footer(canvas,_doc):
         canvas.saveState();canvas.setStrokeColor(colors.HexColor("#C9D6E2"));canvas.line(36,29,page_width-36,29);canvas.setFont("Helvetica",7.5);canvas.setFillColor(colors.HexColor("#60758A"));canvas.drawString(36,17,"This report is system generated by CCMS.");canvas.drawRightString(page_width-36,17,f"Page {canvas.getPageNumber()}");canvas.restoreState()
+    doc.build(story,onFirstPage=footer,onLaterPages=footer);out.seek(0);return out
+
+def build_attendance_pdf(title:str,rows:list[dict],username:str,period:str,columns:list[tuple[str,str]]):
+    out=BytesIO();generated=datetime.now(timezone.utc);width,_=landscape(A4)
+    doc=SimpleDocTemplate(out,pagesize=landscape(A4),rightMargin=24,leftMargin=24,topMargin=24,bottomMargin=34,title=title,author="CCMS")
+    styles=getSampleStyleSheet();small=ParagraphStyle("AttendanceCell",parent=styles["Normal"],fontSize=6.5,leading=8);head=ParagraphStyle("AttendanceHead",parent=small,fontName="Helvetica-Bold",textColor=colors.white)
+    story=[Paragraph("CCMS - Child Care Management System",styles["Title"]),Paragraph(title,styles["Heading2"]),Paragraph(f"Period: {escape(period)} | Generated by: {escape(username)} | Generated at: {generated.strftime('%d %B %Y, %H:%M UTC')}",styles["Normal"]),Spacer(1,10)]
+    data=[[Paragraph("S. No.",head)]+[Paragraph(escape(label),head) for _,label in columns]]
+    for number,row in enumerate(rows,1):data.append([Paragraph(str(number),small)]+[Paragraph(escape(str(row.get(key) if row.get(key) not in (None,"") else "-")),small) for key,_ in columns])
+    if len(data)==1:data.append([Paragraph("-",small),Paragraph("No attendance records found for the selected period.",small)]+[Paragraph("",small) for _ in columns[1:]])
+    table=Table(data,repeatRows=1,colWidths=[28]+[(width-76)/len(columns)]*len(columns));table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#174A7E")),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4F7FA")]),("GRID",(0,0),(-1,-1),.3,colors.HexColor("#B8C7D4")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]));story.append(table)
+    def footer(canvas,_doc):
+        canvas.saveState();canvas.setFont("Helvetica",7);canvas.setFillColor(colors.HexColor("#60758A"));canvas.drawString(24,16,"This report is system generated by CCMS.");canvas.drawRightString(width-24,16,f"Page {canvas.getPageNumber()}");canvas.restoreState()
     doc.build(story,onFirstPage=footer,onLaterPages=footer);out.seek(0);return out
