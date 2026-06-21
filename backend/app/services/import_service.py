@@ -5,7 +5,7 @@ from openpyxl import load_workbook
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from app.models.child import Child
-from app.services.excel_service import HEADERS
+from app.services.excel_service import HEADERS, REQUIRED_HEADERS
 
 def parse_upload(filename, content):
     if filename.lower().endswith(".csv"):
@@ -23,7 +23,7 @@ def validate_rows(db: Session, rows):
     existing_file=set(db.scalars(select(Child.admission_file_no).where(Child.admission_file_no.in_(file_nos))).all()) if file_nos else set()
     for index,row in enumerate(rows,2):
         clean={h:(str(row.get(h)).strip() if row.get(h) is not None else "") for h in HEADERS}; before=len(errors)
-        for h in HEADERS:
+        for h in REQUIRED_HEADERS:
             if not clean[h]: errors.append({"row":index,"field":h,"message":"Required field is missing"})
         for h in ("date_of_birth","admission_date"):
             try:

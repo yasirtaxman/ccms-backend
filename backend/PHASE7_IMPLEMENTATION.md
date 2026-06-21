@@ -64,9 +64,20 @@ Imports:
 
 ## Import format and workflow
 
-The template contains the 22 Child fields, a sample row, instructions, allowed gender/status values, and the required `YYYY-MM-DD` date format. Preview and commit accept `.xlsx` and `.csv`, enforce 5,000 rows, validate every required field, and detect duplicate `child_id` and `admission_file_no` values both within the file and database. Commit revalidates and uses one transaction.
+`GET /imports/templates/children.xlsx` downloads a professionally formatted workbook containing four sheets:
 
-For Google Sheets: open the sheet, choose **File > Download**, select Microsoft Excel or CSV, then upload the downloaded file. Direct Google API synchronization is intentionally outside Phase 7.
+1. **Children Import Template** — the blank upload sheet with frozen headers, filters, date formatting, dropdown validation, and color-coded required fields.
+2. **Instructions** — the preparation, preview, correction, and commit workflow.
+3. **Allowed Values** — permitted values for `gender` and `status`.
+4. **Sample Data** — a complete example for `CCMS-0001 / Ali Khan`; copy its format, not its identifiers.
+
+The 22 columns are: `child_id`, `admission_file_no`, `full_name`, `father_name`, `grandfather_name`, `mother_name`, `gender`, `date_of_birth`, `guardian_name`, `guardian_relationship`, `guardian_cnic`, `guardian_mobile`, `current_address`, `permanent_address`, `village_mohallah`, `union_council`, `tehsil`, `district`, `province`, `admission_date`, `reason_for_admission`, and `status`.
+
+Required columns are marked orange and carry an Excel comment: `child_id`, `admission_file_no`, `full_name`, `gender`, `date_of_birth`, `guardian_name`, `guardian_relationship`, `guardian_mobile`, `district`, `province`, `admission_date`, `reason_for_admission`, and `status`. Blue columns are optional. Dates must use `YYYY-MM-DD`; IDs and admission file numbers must be unique.
+
+Preview and commit accept `.xlsx` and `.csv`, enforce 5,000 rows, validate required fields, dates, allowed values, and duplicate `child_id`/`admission_file_no` values within both the file and database. Commit repeats validation and inserts all rows in one transaction; any validation failure prevents the entire insert. The sample data lives on a separate sheet so the main upload sheet remains safe to fill directly.
+
+For Google Sheets: open the sheet, choose **File > Download > Microsoft Excel (.xlsx)** or **Comma-separated values (.csv)**, then upload the downloaded file. Direct Google API synchronization is intentionally outside Phase 7.
 
 ## RBAC and masking
 
@@ -104,4 +115,14 @@ python -m alembic upgrade head
 
 ## Manual API import test
 
-Download the template, delete its sample row, enter one or more unique children, and save it. Submit it as multipart form field `file` to preview. Resolve every row-numbered error, repeat preview, then submit the unchanged file to commit. Reusing it must be rejected as duplicate data.
+1. Login as Admin or Manager and authorize Swagger.
+2. Call `GET /imports/templates/children.xlsx` and open the downloaded workbook.
+3. Verify the four sheets, read **Instructions**, and review **Sample Data**.
+4. Enter one or more children in **Children Import Template** without changing its column names.
+5. Save the workbook and submit it as multipart field `file` to `POST /imports/children/preview`.
+6. Confirm totals and row-numbered errors; correct every error and preview again.
+7. Submit the unchanged, valid file to `POST /imports/children/commit`.
+8. Confirm `imported_count`, `skipped_count`, `errors`, and `created_child_ids`.
+9. Verify the `IMPORT_PREVIEW` and `IMPORT_COMMIT` audit entries.
+10. Upload the same file again and confirm database duplicate validation rejects it.
+11. Confirm Data Entry Operator can preview but cannot commit, and Viewer cannot access import endpoints.
