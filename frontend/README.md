@@ -13,6 +13,14 @@ npm run dev
 
 Set `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000` and run the CCMS backend before signing in. Production API URLs must come from the deployment environment.
 
+Development login:
+
+- Username: `admin`
+- Password: `Admin123`
+- Backend must be running at `http://127.0.0.1:8000`
+
+These credentials are for the existing local development account. Password policy applies when creating, resetting, or changing passwords; it does not reject an existing password during login.
+
 ## Authentication
 
 The login form posts OAuth2 form data to `/auth/token`, stores the development token in `localStorage`, fetches `/auth/me` and `/users/me/permissions`, and redirects to `/dashboard`. The shared API client attaches the bearer token and clears the session on HTTP 401. Logout also clears the session. A secure httpOnly cookie/BFF strategy is recommended for a later production frontend phase.

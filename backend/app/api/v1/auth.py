@@ -38,6 +38,7 @@ def register_user(
     user: UserCreate,
     db: Session = Depends(get_db)
 ):
+    validate_password(user.password, user.username, user.password)
     existing_user = db.query(User).filter(
         or_(
             User.username == user.username,
@@ -102,7 +103,6 @@ def oauth2_login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    validate_password(user.password, user.username, user.password)
     return _authenticate(form_data.username, form_data.password, db)
 
 

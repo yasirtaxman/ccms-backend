@@ -17,7 +17,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh=useCallback(async()=>{
     if(!getToken()){logout();setLoading(false);return;}
     try { const [me,p]=await Promise.all([api.get<User>("/auth/me"),api.get<PermissionSummary>("/users/me/permissions")]); setUser(me.data);setPermissions(p.data); }
-    catch { logout(); } finally { setLoading(false); }
+    catch (error) { logout(); throw error; } finally { setLoading(false); }
   },[logout]);
   useEffect(()=>{
     if(!getToken()){queueMicrotask(()=>setLoading(false));return;}
@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login=useCallback(async(username:string,password:string)=>{
     const form=new URLSearchParams({username,password});
     const response=await api.post<LoginResponse>("/auth/token",form,{headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+    if(!response.data.access_token||response.data.token_type.toLowerCase()!=="bearer")throw new Error("Invalid login response");
     setToken(response.data.access_token); setLoading(true); await refresh();
   },[refresh]);
   const value=useMemo(()=>({user,permissions,loading,authenticated:Boolean(user),login,logout,refresh}),[user,permissions,loading,login,logout,refresh]);
