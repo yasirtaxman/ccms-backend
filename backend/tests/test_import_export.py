@@ -75,6 +75,21 @@ def test_exports_are_downloadable_and_audited(client, db_session):
     assert db_session.query(AuditLog).filter(AuditLog.action.in_(["EXPORT_EXCEL","EXPORT_PDF"])).count()==2
 
 
+def test_professional_module_and_admin_exports(client, db_session):
+    _, headers = auth(db_session, "export-admin", "Admin")
+    for path in ("sponsorships.pdf", "users.pdf", "audit-summary.pdf"):
+        response = client.get(f"/exports/{path}", headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.content.startswith(b"%PDF") and len(response.content) > 1800
+    for path in ("users.xlsx", "audit-summary.xlsx"):
+        response = client.get(f"/exports/{path}", headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.content.startswith(b"PK")
+    _, viewer_headers = auth(db_session, "export-admin-viewer", "Viewer")
+    assert client.get("/exports/users.pdf", headers=viewer_headers).status_code == 403
+    assert client.get("/exports/audit-summary.pdf", headers=viewer_headers).status_code == 403
+
+
 def test_full_child_profile_exports_have_professional_structure(client, db_session):
     _, headers = auth(db_session, "profile-admin", "Admin")
     record = child()

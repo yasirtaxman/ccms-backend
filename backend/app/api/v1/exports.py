@@ -1,8 +1,10 @@
 from datetime import date
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.core.deps import can_operational_read, get_db
+from app.core.deps import can_operational_read, get_db, require_admin
+from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.services import report_service
 from app.services.audit import AuditAction, AuditModule, add_audit_log
@@ -25,7 +27,7 @@ for name in REPORTS:
         def endpoint(db:Session=Depends(get_db),user:User=Depends(can_operational_read)): return export(db,user,n,k)
         return endpoint
     router.add_api_route(f"/{name}.xlsx",make(name,"xlsx"),methods=["GET"])
-    if name != "sponsorships": router.add_api_route(f"/{name}.pdf",make(name,"pdf"),methods=["GET"])
+    router.add_api_route(f"/{name}.pdf",make(name,"pdf"),methods=["GET"])
 
 def profile_export(child_id,kind,db,user):
     profile=build_full_child_profile(db,child_id,{role.name for role in user.roles})
@@ -63,3 +65,21 @@ def daily_attendance_excel(date_filter:date|None=Query(None,alias="date"),from_d
 def monthly_attendance_excel(month:int=Query(...,ge=1,le=12),year:int=Query(...,ge=2000,le=2100),child_id:int|None=None,db:Session=Depends(get_db),user:User=Depends(can_operational_read)):
     rows=monthly_report(month,year,child_id,db,user);stream=build_excel_report("Monthly Child Attendance",rows,user.username,{"month":month,"year":year,"child_id":child_id});add_audit_log(db,user_id=user.id,action=AuditAction.EXPORT_EXCEL,module=AuditModule.IMPORT_EXPORT,new_values={"report_type":"monthly-child-attendance"});db.commit()
     return StreamingResponse(stream,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",headers={"Content-Disposition":f'attachment; filename="ccms-monthly-attendance-{year}-{month:02d}.xlsx"'})
+
+def admin_export(db,user,name,kind,rows):
+    stream=build_excel_report(name,rows,user.username,{}) if kind=="xlsx" else build_pdf_report(name,rows,user.username,{})
+    add_audit_log(db,user_id=user.id,action=AuditAction.EXPORT_EXCEL if kind=="xlsx" else AuditAction.EXPORT_PDF,module=AuditModule.IMPORT_EXPORT,new_values={"report_type":name.lower().replace(" ","-")});db.commit()
+    media="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if kind=="xlsx" else "application/pdf"
+    return StreamingResponse(stream,media_type=media,headers={"Content-Disposition":f'attachment; filename="ccms-{name.lower().replace(" ","-")}.{kind}"'})
+
+def user_rows(db):return [{"id":row.id,"username":row.username,"full_name":row.full_name,"email":row.email,"is_active":row.is_active,"force_password_change":row.force_password_change,"created_at":row.created_at} for row in db.scalars(select(User).order_by(User.username)).all()]
+def audit_rows(db):return [{"id":row.id,"user_id":row.user_id,"action":row.action,"module":row.module,"record_id":row.record_id,"created_at":row.created_at} for row in db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(5000)).all()]
+
+@router.get("/users.pdf")
+def users_pdf(db:Session=Depends(get_db),user:User=Depends(require_admin)):return admin_export(db,user,"Users","pdf",user_rows(db))
+@router.get("/users.xlsx")
+def users_excel(db:Session=Depends(get_db),user:User=Depends(require_admin)):return admin_export(db,user,"Users","xlsx",user_rows(db))
+@router.get("/audit-summary.pdf")
+def audit_pdf(db:Session=Depends(get_db),user:User=Depends(require_admin)):return admin_export(db,user,"Audit Summary","pdf",audit_rows(db))
+@router.get("/audit-summary.xlsx")
+def audit_excel(db:Session=Depends(get_db),user:User=Depends(require_admin)):return admin_export(db,user,"Audit Summary","xlsx",audit_rows(db))
