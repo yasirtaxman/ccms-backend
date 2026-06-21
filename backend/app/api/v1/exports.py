@@ -5,9 +5,9 @@ from app.core.deps import can_operational_read, get_db
 from app.models.user import User
 from app.services import report_service
 from app.services.audit import AuditAction, AuditModule, add_audit_log
-from app.services.dashboard_service import child_complete_profile
-from app.services.excel_service import build_excel_report
-from app.services.pdf_service import build_pdf_report
+from app.services.excel_service import build_excel_report,build_full_profile_excel
+from app.services.pdf_service import build_pdf_report,build_full_profile_pdf
+from app.services.profile_export_service import build_full_child_profile
 from app.core.config import settings
 
 router=APIRouter(prefix="/exports",tags=["Exports"])
@@ -26,13 +26,8 @@ for name in REPORTS:
     if name != "sponsorships": router.add_api_route(f"/{name}.pdf",make(name,"pdf"),methods=["GET"])
 
 def profile_export(child_id,kind,db,user):
-    profile=child_complete_profile(db,child_id).model_dump()
-    if not {role.name for role in user.roles} & {"Admin", "Manager"}:
-        profile["case_management"]["risk_level"] = None
-        profile["case_management"]["welfare_status"] = None
-        profile["case_management"]["critical_incident_count"] = 0
-    rows=[{"section":k,**v} for k,v in profile.items()]
-    stream=build_excel_report("Full Child Profile",rows,user.username,{"child_id":child_id}) if kind=="xlsx" else build_pdf_report("Full Child Profile",rows,user.username,{"child_id":child_id})
+    profile=build_full_child_profile(db,child_id,{role.name for role in user.roles})
+    stream=build_full_profile_excel(profile,user.username) if kind=="xlsx" else build_full_profile_pdf(profile,user.username)
     add_audit_log(db,user_id=user.id,action=AuditAction.EXPORT_EXCEL if kind=="xlsx" else AuditAction.EXPORT_PDF,module=AuditModule.IMPORT_EXPORT,record_id=child_id,new_values={"report_type":"full-child-profile"}); db.commit()
     media="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if kind=="xlsx" else "application/pdf"; return StreamingResponse(stream,media_type=media,headers={"Content-Disposition":f'attachment; filename="ccms-child-{child_id}.{kind}"'})
 @router.get("/full-child-profile/{child_id}.xlsx")

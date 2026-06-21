@@ -20,6 +20,8 @@ Routes:
 
 The list provides client-side search/filter/pagination against the existing Children API. Forms match the backend create and immutable-safe update contracts. Profile screens combine the core child, complete safe summary, documents, attendance, and authenticated exports. Viewer-sensitive guardian identifiers and full addresses are hidden.
 
+The existing profile download controls continue to call the authenticated full-profile PDF and Excel endpoints. These downloads now produce the professional A4 profile report and structured multi-sheet workbook; no route or user workflow changed. The complete profile summary also displays the safe daily attendance summary returned by the backend.
+
 Import follows template download → Excel/CSV upload → preview → correction → transactional commit. Admin/Manager can commit, Data Entry Operator can preview, and Viewer is blocked. Attendance supports date selection, status/time/remarks entry, Mark All Present, unsaved reset, transactional save, summary cards, read-only Viewer mode, date-range reports, and monthly percentages.
 
 ## Validation

@@ -2,7 +2,7 @@
 import { usePermissions } from "@/hooks/usePermissions";
 import type { ChildCompleteProfile } from "@/types/children";
 
-const titles:Record<keyof ChildCompleteProfile,string>={child_basic:"Basic summary",admission_documents:"Admission documents",sponsorship:"Sponsorship",accommodation:"Accommodation",medical:"Medical",education:"Education",case_management:"Case management"};
+const titles:Record<keyof ChildCompleteProfile,string>={child_basic:"Basic summary",admission_documents:"Admission documents",sponsorship:"Sponsorship",accommodation:"Accommodation",medical:"Medical",education:"Education",case_management:"Case management",daily_attendance:"Daily attendance"};
 
 export function ChildProfileSummary({summary}:{summary:ChildCompleteProfile}){
   const {isViewer}=usePermissions();const viewer=isViewer();
