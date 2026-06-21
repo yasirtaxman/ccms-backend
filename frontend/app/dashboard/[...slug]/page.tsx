@@ -1,0 +1,3 @@
+import { Construction } from "lucide-react";
+import { humanize } from "@/lib/utils";
+export default async function ModulePlaceholder({params}:{params:Promise<{slug:string[]}>}){const {slug}=await params;const title=humanize(slug.at(-1)||"Module");return <section className="panel mx-auto max-w-3xl py-16 text-center"><div className="mx-auto grid size-14 place-items-center rounded-2xl bg-blue-50 text-blue-700"><Construction/></div><p className="eyebrow mt-6">Frontend module foundation</p><h2 className="page-title mt-2">{title}</h2><p className="mx-auto mt-3 max-w-xl text-slate-500">Navigation and access control are ready. The complete {title.toLowerCase()} workspace will be delivered in the next module implementation phase.</p></section>}
