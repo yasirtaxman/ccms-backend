@@ -1,0 +1,2 @@
+import { AttendanceReportsPanel } from "@/components/children/AttendanceReportsPanel";
+export default function AttendanceReportsPage(){return <div className="space-y-6"><div><p className="eyebrow">Presence intelligence</p><h1 className="page-title">Daily attendance reports</h1><p className="page-subtitle">Review date-range registers and monthly child attendance summaries.</p></div><AttendanceReportsPanel/></div>}

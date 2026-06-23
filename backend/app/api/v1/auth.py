@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -21,6 +22,7 @@ from app.schemas.user import (
     Token,
 )
 from app.services.audit import AuditAction, AuditModule, add_audit_log
+from app.services.user_service import validate_password
 
 router = APIRouter(
     prefix="/auth",
@@ -36,6 +38,7 @@ def register_user(
     user: UserCreate,
     db: Session = Depends(get_db)
 ):
+    validate_password(user.password, user.username, user.password)
     existing_user = db.query(User).filter(
         or_(
             User.username == user.username,
@@ -124,6 +127,10 @@ def _authenticate(username_or_email: str, password: str, db: Session) -> dict[st
     ).first()
 
     if not user:
+        add_audit_log(db, user_id=None, action=AuditAction.USER_LOGIN_FAILED,
+                      module=AuditModule.USER_ADMINISTRATION,
+                      new_values={"login_identifier": username_or_email[:100]})
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
@@ -133,15 +140,23 @@ def _authenticate(username_or_email: str, password: str, db: Session) -> dict[st
         password,
         user.password_hash
     ):
+        add_audit_log(db, user_id=user.id, action=AuditAction.USER_LOGIN_FAILED,
+                      module=AuditModule.USER_ADMINISTRATION, record_id=user.id,
+                      new_values={"username": user.username})
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
 
     if not user.is_active:
+        add_audit_log(db, user_id=user.id, action=AuditAction.USER_LOGIN_FAILED,
+                      module=AuditModule.USER_ADMINISTRATION, record_id=user.id,
+                      new_values={"username": user.username, "reason": "inactive"})
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is disabled",
+            detail="Invalid credentials",
         )
 
     access_token = create_access_token(
@@ -159,6 +174,10 @@ def _authenticate(username_or_email: str, password: str, db: Session) -> dict[st
         record_id=user.id,
         new_values={"username": user.username},
     )
+    user.last_login_at = datetime.now(UTC)
+    add_audit_log(db, user_id=user.id, action=AuditAction.USER_LOGIN_SUCCESS,
+                  module=AuditModule.USER_ADMINISTRATION, record_id=user.id,
+                  new_values={"username": user.username})
     db.commit()
 
     return {

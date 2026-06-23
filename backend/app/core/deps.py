@@ -18,6 +18,9 @@ def get_db():
     try:
         yield db
 
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -87,3 +90,12 @@ can_create_or_update = require_roles(ROLE_MANAGER, ROLE_DATA_ENTRY)
 can_read = require_roles(ROLE_MANAGER, ROLE_VIEWER)
 can_sponsor_read = require_roles(ROLE_MANAGER, ROLE_DATA_ENTRY, ROLE_VIEWER)
 can_operational_read = require_roles(ROLE_MANAGER, ROLE_DATA_ENTRY, ROLE_VIEWER)
+
+def require_permission(permission: str):
+    def dependency(current_user:User=Depends(get_current_user),db:Session=Depends(get_db)):
+        from sqlalchemy.orm import selectinload
+        from app.models.permission import Permission
+        from app.services.permission_service import permission_or_403
+        user=db.scalar(select(User).options(selectinload(User.roles).selectinload(Role.permissions)).where(User.id==current_user.id))
+        permission_or_403(user,permission);return user
+    return dependency

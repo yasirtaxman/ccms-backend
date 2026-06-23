@@ -87,6 +87,16 @@ For Google Sheets: open the sheet, choose **File > Download > Microsoft Excel (.
 - Viewer: read-only dashboards/reports and safe exports; alert references are reduced to counts; imports and audit summary are denied.
 - Dashboard/report/export projections omit guardian and sponsor identification numbers, full addresses, case notes, medical diagnoses, and treatment notes.
 
+## Professional full child profile exports
+
+`GET /exports/full-child-profile/{child_id}.pdf` now generates an A4 portrait case/profile document instead of a raw report table. It includes the CCMS header, report metadata, a child identity block, status styling, numbered profile sections, readable two-column field layouts, detail tables where useful, and page-numbered system-generated footers. Missing records are described with meaningful messages rather than empty headings.
+
+The report covers child and family details, guardian and address information, admission documents, sponsorship, accommodation, safe medical and education summaries, case management, and current-month daily attendance. Admin receives permitted full guardian identification data; other roles receive a masked guardian CNIC, while Viewer exports additionally mask the guardian mobile, omit full addresses, and restrict sponsor identity and sensitive case details. Sponsor identity documents, case-note text, diagnoses, treatment details, passwords, and authentication data are never exported.
+
+`GET /exports/full-child-profile/{child_id}.xlsx` uses the same role-aware data projection and produces nine structured worksheets: **Child Basic Info**, **Guardian & Address**, **Documents**, **Sponsorship**, **Accommodation**, **Medical Summary**, **Education Summary**, **Case Management**, and **Daily Attendance**. Each worksheet has report metadata, formatted sections, print settings, practical column widths, and professional no-data messages.
+
+The matching complete-profile summary now also reports admission identifiers and location, pending document verification, accommodation allocation details, current education status, and a safe current-month daily attendance summary.
+
 ## Audit
 
 Exports record report type and filters. Preview records filename and validation totals. Commit records filename, imported count, user ID, and created child IDs. Imports use one summary event rather than one event per child.

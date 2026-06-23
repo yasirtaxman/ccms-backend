@@ -1,0 +1,2 @@
+import { ChildImportPanel } from "@/components/children/ChildImportPanel";import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+export default function ImportPage(){return <ProtectedRoute roles={["Admin","Manager","Data Entry Operator"]}><div className="space-y-6"><div><p className="eyebrow">Child data migration</p><h1 className="page-title">Import children</h1><p className="page-subtitle">Validate Excel or CSV data before committing it to CCMS.</p></div><ChildImportPanel/></div></ProtectedRoute>}

@@ -6,6 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from app.models.child import Child
 from app.services.excel_service import HEADERS, REQUIRED_HEADERS
+from app.core.config import settings
 
 def parse_upload(filename, content):
     if filename.lower().endswith(".csv"):
@@ -13,7 +14,7 @@ def parse_upload(filename, content):
     elif filename.lower().endswith(".xlsx"):
         ws=load_workbook(BytesIO(content),read_only=True,data_only=True).active; values=list(ws.values); headers=[str(v or "").strip() for v in values[0]]; rows=[dict(zip(headers,v)) for v in values[1:] if any(x is not None and str(x).strip() for x in v)]
     else: raise ValueError("Only .xlsx and .csv files are supported")
-    if len(rows)>5000: raise ValueError("Import exceeds maximum of 5000 rows")
+    if len(rows)>settings.IMPORT_MAX_ROWS: raise ValueError(f"Import exceeds maximum of {settings.IMPORT_MAX_ROWS} rows")
     return rows
 
 def validate_rows(db: Session, rows):

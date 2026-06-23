@@ -171,6 +171,7 @@ class ChildCompleteProfileSummaryResponse(StrictModel):
     medical: dict
     education: dict
     case_management: dict
+    daily_attendance: dict
 
 
 class SearchResult(StrictModel):

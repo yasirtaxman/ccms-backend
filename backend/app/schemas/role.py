@@ -16,6 +16,8 @@ class RoleCreate(BaseModel):
 class RoleResponse(BaseModel):
     id: int
     name: str
+    is_system: bool = False
+    permissions_configured: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -24,3 +26,10 @@ class RoleAssignmentResponse(BaseModel):
     user_id: int
     role: RoleResponse
     message: str
+
+class RoleUpdate(BaseModel):
+    name: str = Field(min_length=2,max_length=100)
+class PermissionResponse(BaseModel):
+    id:int;name:str;module:str;action:str;description:str|None=None
+    model_config=ConfigDict(from_attributes=True)
+class RolePermissionsUpdate(BaseModel):permission_ids:list[int]

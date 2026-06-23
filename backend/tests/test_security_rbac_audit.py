@@ -50,6 +50,17 @@ def test_login_me_and_login_audit(client, db_session):
     assert db_session.query(AuditLog).filter_by(action="LOGIN", user_id=user.id).count() == 1
 
 
+def test_oauth_token_accepts_existing_credentials_without_new_password_policy(client, db_session):
+    user = make_user(db_session, "legacy-admin", "Admin")
+    response = client.post(
+        "/auth/token",
+        data={"username": user.username, "password": "StrongPassword123!"},
+    )
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"
+    assert response.json()["access_token"]
+
+
 def test_admin_role_management_and_viewer_is_read_only(client, db_session):
     admin = make_user(db_session, "admin", "Admin")
     admin_headers = {"Authorization": f"Bearer {login(client, admin.username)}"}

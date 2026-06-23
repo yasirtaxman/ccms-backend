@@ -2,7 +2,7 @@ from io import BytesIO
 from openpyxl import Workbook, load_workbook
 from app.models.audit_log import AuditLog
 from app.services.excel_service import HEADERS, REQUIRED_HEADERS, SAMPLE_DATA
-from tests.test_dashboard_reports import auth
+from tests.test_dashboard_reports import auth, child
 
 
 def upload(rows):
@@ -73,3 +73,55 @@ def test_exports_are_downloadable_and_audited(client, db_session):
         assert response.status_code==200
         assert content_type in response.headers["content-type"]
     assert db_session.query(AuditLog).filter(AuditLog.action.in_(["EXPORT_EXCEL","EXPORT_PDF"])).count()==2
+
+
+def test_professional_module_and_admin_exports(client, db_session):
+    _, headers = auth(db_session, "export-admin", "Admin")
+    for path in ("sponsorships.pdf", "users.pdf", "audit-summary.pdf"):
+        response = client.get(f"/exports/{path}", headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.content.startswith(b"%PDF") and len(response.content) > 1800
+    for path in ("users.xlsx", "audit-summary.xlsx"):
+        response = client.get(f"/exports/{path}", headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.content.startswith(b"PK")
+    _, viewer_headers = auth(db_session, "export-admin-viewer", "Viewer")
+    assert client.get("/exports/users.pdf", headers=viewer_headers).status_code == 403
+    assert client.get("/exports/audit-summary.pdf", headers=viewer_headers).status_code == 403
+
+
+def test_full_child_profile_exports_have_professional_structure(client, db_session):
+    _, headers = auth(db_session, "profile-admin", "Admin")
+    record = child()
+    db_session.add(record)
+    db_session.commit()
+    excel = client.get(f"/exports/full-child-profile/{record.id}.xlsx", headers=headers)
+    assert excel.status_code == 200, excel.text
+    workbook = load_workbook(BytesIO(excel.content))
+    assert workbook.sheetnames == [
+        "Child Basic Info", "Guardian & Address", "Documents", "Sponsorship",
+        "Accommodation", "Medical Summary", "Education Summary",
+        "Case Management", "Daily Attendance",
+    ]
+    values = [str(cell.value) for sheet in workbook for row in sheet for cell in row if cell.value is not None]
+    assert record.full_name in values
+    assert not any("Filters:" in value or "{'child_id'" in value for value in values)
+    pdf = client.get(f"/exports/full-child-profile/{record.id}.pdf", headers=headers)
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.content.startswith(b"%PDF")
+    assert len(pdf.content) > 3000
+
+
+def test_full_child_profile_viewer_export_masks_sensitive_data(client, db_session):
+    _, headers = auth(db_session, "profile-viewer", "Viewer")
+    record = child()
+    db_session.add(record)
+    db_session.commit()
+    response = client.get(f"/exports/full-child-profile/{record.id}.xlsx", headers=headers)
+    assert response.status_code == 200, response.text
+    workbook = load_workbook(BytesIO(response.content))
+    values = {str(cell.value) for sheet in workbook for row in sheet for cell in row if cell.value is not None}
+    assert record.guardian_cnic not in values
+    assert record.guardian_mobile not in values
+    assert record.current_address not in values
+    assert record.permanent_address not in values

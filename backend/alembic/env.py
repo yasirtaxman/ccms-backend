@@ -28,6 +28,10 @@ from app.models.education_document import EducationDocument
 from app.models.case_management import (
     ChildCaseProfile, CaseNote, CounselingSession, IncidentRecord, CarePlan, CaseReview
 )
+from app.models.child_attendance import DailyChildAttendance
+from app.models.permission import Permission,RolePermission
+from app.models.visitor import Visitor,ChildVisit
+from app.models.organization_profile import OrganizationProfile
 
 config = context.config
 
