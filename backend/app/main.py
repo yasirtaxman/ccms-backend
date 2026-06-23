@@ -26,8 +26,9 @@ from app.api.v1.users import router as users_router
 from app.api.v1.system import router as system_router
 from app.api.v1.child_attendance import router as child_attendance_router
 from app.api.v1.visitors import router as visitors_router
+from app.api.v1.organization_profile import router as organization_profile_router
 
-TAGS_METADATA = [{"name": name} for name in ["Authentication","Users","Roles","Children","Documents","Sponsors","Accommodation","Medical","Education","Case Management","Dashboards and Search","Consolidated Reports","Exports","Imports","System","Audit Logs"]]
+TAGS_METADATA = [{"name": name} for name in ["Authentication","Users","Roles","Children","Documents","Sponsors","Accommodation","Medical","Education","Case Management","Dashboards and Search","Consolidated Reports","Exports","Imports","System","Audit Logs","Organization Profile"]]
 
 configure_logging()
 
@@ -63,6 +64,7 @@ app.include_router(users_router)
 app.include_router(system_router)
 app.include_router(child_attendance_router)
 app.include_router(visitors_router)
+app.include_router(organization_profile_router)
 
 
 @app.get("/")

@@ -12,6 +12,7 @@ from app.schemas.visitors import ChildVisitCreate,ChildVisitResponse,ChildVisitU
 from app.services.audit import AuditAction,AuditModule,add_audit_log
 from app.services.excel_service import build_excel_report
 from app.services.pdf_service import build_pdf_report
+from app.services.organization_profile_service import report_branding
 from app.services.permission_service import has_permission
 from app.services.visitor_service import base_visit_query,daily_rows,monthly_rows,report_projection,roles,visit_or_404,visit_rows,visitor_or_404,visitor_visible
 
@@ -130,7 +131,7 @@ def visitor_dashboard(db:Session=Depends(get_db),_:User=Depends(require_permissi
 
 def export_response(db,user,title,filename,rows,kind,permission):
     if not has_permission(user,permission):raise HTTPException(403,f"Permission required: {permission}")
-    stream=build_pdf_report(title,rows,user.username,{}) if kind=="pdf" else build_excel_report(title,rows,user.username,{})
+    stream=build_pdf_report(title,rows,user.username,{},report_branding(db)) if kind=="pdf" else build_excel_report(title,rows,user.username,{})
     add_audit_log(db,user_id=user.id,action=AuditAction.EXPORT_PDF if kind=="pdf" else AuditAction.EXPORT_EXCEL,module=AuditModule.IMPORT_EXPORT,new_values={"report_type":filename});db.commit();media="application/pdf" if kind=="pdf" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";return StreamingResponse(stream,media_type=media,headers={"Content-Disposition":f'attachment; filename="{filename}.{kind}"'})
 @router.get("/exports/visitors.{kind}")
 def export_visitors(kind:str,db:Session=Depends(get_db),user:User=Depends(require_permission("visitors.export"))):
