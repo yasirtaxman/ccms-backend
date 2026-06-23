@@ -14,6 +14,7 @@ from app.models.medication import Medication
 from app.models.school import School
 from app.models.sponsor import ChildSponsorship,Sponsor
 from app.models.vaccination import Vaccination
+from app.models.visitor import ChildVisit,Visitor
 
 REQUIRED_DOCUMENTS={"Admission Form","Child Photo","Birth Certificate / Form-B","Guardian CNIC","Father Death Certificate","Medical Certificate"}
 
@@ -42,6 +43,8 @@ def build_full_child_profile(db:Session,child_id:int,roles:set[str])->dict:
     month_start=today.replace(day=1)
     daily_counts=dict(db.execute(select(DailyChildAttendance.status,func.count()).where(DailyChildAttendance.child_id==child_id,DailyChildAttendance.attendance_date.between(month_start,today),DailyChildAttendance.deleted_at.is_(None)).group_by(DailyChildAttendance.status)).all())
     today_status=db.scalar(select(DailyChildAttendance.status).where(DailyChildAttendance.child_id==child_id,DailyChildAttendance.attendance_date==today,DailyChildAttendance.deleted_at.is_(None)))
+    visit_counts=dict(db.execute(select(ChildVisit.visit_status,func.count()).where(ChildVisit.child_id==child_id).group_by(ChildVisit.visit_status)).all())
+    latest_visits=db.execute(select(ChildVisit,Visitor).join(Visitor,Visitor.id==ChildVisit.visitor_id).where(ChildVisit.child_id==child_id,Visitor.deleted_at.is_(None)).order_by(ChildVisit.visit_date.desc(),ChildVisit.id.desc()).limit(5)).all()
     marked_days=sum(daily_counts.values());present_days=daily_counts.get("Present",0);leave_days=sum(daily_counts.get(status,0) for status in ("On Leave","Medical Leave","Home Visit"))
     guardian_cnic=child.guardian_cnic if admin else _mask(child.guardian_cnic)
     guardian_mobile=_mask(child.guardian_mobile) if viewer else child.guardian_mobile
@@ -71,6 +74,7 @@ def build_full_child_profile(db:Session,child_id:int,roles:set[str])->dict:
         case_fields+=_fields(case_status=case_profile.case_status,risk_level=case_profile.risk_level if (admin or "Manager" in roles) else "Restricted",welfare_status=case_profile.welfare_status if (admin or "Manager" in roles) else "Restricted",pending_follow_up_count=db.scalar(select(func.count()).select_from(CaseNote).where(CaseNote.child_id==child_id,CaseNote.deleted_at.is_(None),CaseNote.follow_up_required.is_(True),CaseNote.follow_up_date<=today)) or 0,active_care_plan_count=db.scalar(select(func.count()).select_from(CarePlan).where(CarePlan.child_id==child_id,CarePlan.deleted_at.is_(None),CarePlan.status=="Active")) or 0,critical_incident_count=(db.scalar(select(func.count()).select_from(IncidentRecord).where(IncidentRecord.child_id==child_id,IncidentRecord.deleted_at.is_(None),IncidentRecord.severity=="Critical",IncidentRecord.review_status!="Closed")) or 0) if (admin or "Manager" in roles) else "Restricted")
     sections.append({"key":"case_management","title":"10. Case Management Summary","fields":case_fields,"empty":"No case profile found." if not case_profile else None})
     sections.append({"key":"daily_attendance","title":"11. Daily Attendance Summary","fields":_fields(today_status=today_status or "Not marked",current_month_present_days=present_days,current_month_absent_days=daily_counts.get("Absent",0),current_month_leave_days=leave_days,current_month_attendance_percentage=f"{present_days*100/marked_days:.2f}%" if marked_days else "Not available"),"columns":["Status","Days"],"rows":[[status,count] for status,count in sorted(daily_counts.items())],"empty":"No daily attendance records found for the current month." if not daily_counts else None})
+    sections.append({"key":"visitor_history","title":"12. Visitor / Meeting History Summary","fields":_fields(total_visits=sum(visit_counts.values()),completed_visits=visit_counts.get("Completed",0),scheduled_visits=visit_counts.get("Scheduled",0),checked_in_visits=visit_counts.get("Checked In",0),cancelled_visits=visit_counts.get("Cancelled",0)),"columns":["Visit Date","Visitor","Relationship","Purpose","Status"],"rows":[[visit.visit_date,visitor.full_name if not viewer else "Restricted",visitor.relationship_to_child,visit.meeting_purpose,visit.visit_status] for visit,visitor in latest_visits],"empty":"No visitor or child meeting records found." if not latest_visits else None})
     identity={"Child Name":child.full_name,"Child ID":child.child_id,"Admission File No":child.admission_file_no,"Status":child.status,"Gender":child.gender,"Age":_age(child.date_of_birth,today),"Date of Birth":child.date_of_birth,"Admission Date":child.admission_date,"District":child.district,"Province":child.province}
     child_photo=next((document.file_path for document in reversed(documents) if document.document_type=="Child Photo"),None)
     return {"child_id":child.id,"identity":identity,"sections":sections,"child_photo_path":child_photo}
