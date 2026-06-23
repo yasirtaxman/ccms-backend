@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -15,12 +15,15 @@ class Role(Base):
         String(100),
         unique=True
     )
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    permissions_configured: Mapped[bool] = mapped_column(Boolean,default=False,nullable=False)
 
     users: Mapped[list["User"]] = relationship(
         secondary="user_roles",
         back_populates="roles",
         lazy="selectin",
     )
+    permissions: Mapped[list["Permission"]] = relationship(secondary="role_permissions", back_populates="roles", lazy="selectin")
 
 
 class UserRole(Base):
@@ -43,3 +46,4 @@ class UserRole(Base):
 
 
 from app.models.user import User  # noqa: E402  (resolves the relationship type)
+from app.models.permission import Permission  # noqa: E402

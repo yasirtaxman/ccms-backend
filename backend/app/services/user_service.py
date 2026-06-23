@@ -37,10 +37,11 @@ def roles_or_422(db: Session, role_ids: list[int]) -> list[Role]:
 
 def user_response(user: User):
     from app.schemas.users import UserAdminResponse
-    return UserAdminResponse(id=user.id,username=user.username,email=user.email,full_name=user.full_name,is_active=user.is_active,force_password_change=user.force_password_change,roles=sorted(role.name for role in user.roles),created_at=user.created_at,updated_at=user.updated_at)
+    return UserAdminResponse(id=user.id,username=user.username,email=user.email,full_name=user.full_name,is_active=user.is_active,force_password_change=user.force_password_change,roles=sorted(role.name for role in user.roles),effective_permissions=effective_permissions(user),created_at=user.created_at,updated_at=user.updated_at)
 
 def effective_permissions(user: User) -> list[str]:
-    values=set()
+    from app.services.permission_service import effective_permissions as detailed
+    values=set(detailed(user))
     for role in user.roles: values.update(ROLE_PERMISSIONS.get(role.name,[f"role:{role.name}"]))
     return sorted(values)
 
