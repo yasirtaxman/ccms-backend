@@ -61,8 +61,9 @@ export default function ChildProfilePage({ params }: { params: Promise<{ id: str
         <Info title="Admission information" values={{ "Admission date": child.admission_date, "Reason for admission": child.reason_for_admission }} />
       </div>
 
+      {summary && <ChildProfileSummary summary={summary} sectionKeys={["admission_documents", "sponsorship", "accommodation", "medical", "education", "case_management"]} />}
       {hasPermission("development.view") && <ChildDevelopmentSummary childId={childId} />}
-      {summary && <ChildProfileSummary summary={summary} />}
+      {summary && <ChildProfileSummary summary={summary} sectionKeys={["daily_attendance"]} showHeading={false} />}
 
       <section className="panel">
         <div className="panel-title">
@@ -91,7 +92,7 @@ export default function ChildProfilePage({ params }: { params: Promise<{ id: str
 }
 
 function Info({ title, values }: { title: string; values: Record<string, string | undefined> }) {
-  return <section className="panel"><h2 className="mb-4 text-lg font-bold">{title}</h2><dl className="grid gap-3 sm:grid-cols-2">{Object.entries(values).map(([label, value]) => <div key={label}><dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{value || "-"}</dd></div>)}</dl></section>;
+  return <section className="panel"><h2 className="mb-4 text-lg font-bold">{title}</h2><dl className="grid gap-3 sm:grid-cols-2">{Object.entries(values).map(([label, value]) => <div key={label}><dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{value || "Not recorded"}</dd></div>)}</dl></section>;
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
