@@ -1,0 +1,21 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { developmentApi } from "@/lib/development";
+import { apiErrorMessage } from "@/lib/api";
+import type { BehaviorSupportPlan, BehaviorSupportPlanPayload } from "@/types/development";
+
+const blank: BehaviorSupportPlanPayload = { plan_title: "", plan_type: "Behavior Support", plan_status: "Draft", priority_level: "Low", start_date: new Date().toISOString().slice(0,10) };
+const textFields = ["identified_behavior","behavior_description","possible_triggers","known_patterns","replacement_positive_behavior","prevention_strategies","staff_response_plan","de_escalation_steps","positive_reinforcement_plan","environment_adjustments","communication_support","learning_support","social_support","counselor_recommendations","guardian_communication_notes","progress_summary","review_outcome","closure_reason","internal_notes"] as const;
+
+export function SupportPlanForm({ childId, planId }: { childId?:number; planId?:number }) {
+  const router = useRouter();
+  const [form, setForm] = useState<BehaviorSupportPlanPayload>(blank);
+  const [error, setError] = useState("");
+  useEffect(()=>{if(planId)developmentApi.getSupportPlan(planId).then((row:BehaviorSupportPlan)=>setForm(row)).catch(e=>setError(apiErrorMessage(e)))},[planId]);
+  const set = (key:string,value:string|boolean|null)=>setForm({...form,[key]:value});
+  const save = async()=>{setError("");try{const saved=planId?await developmentApi.updateSupportPlan(planId,form):await developmentApi.createSupportPlan(Number(childId),form);router.push(`/dashboard/development/support-plans/${saved.id}`)}catch(e){setError(apiErrorMessage(e))}};
+  return <div className="space-y-6"><header><p className="eyebrow">Development Profile</p><h1 className="page-title">{planId?"Edit":"Create"} Behavior Support Plan</h1><p className="page-subtitle">Use observation-based language. Do not enter diagnosis labels.</p></header>{error&&<div className="notice-error">{error}</div>}<section className="panel space-y-4"><div className="grid gap-3 md:grid-cols-3"><Field label="Plan Title"><input className="field-control" value={form.plan_title||""} onChange={e=>set("plan_title",e.target.value)}/></Field><Field label="Plan Type"><select className="field-control" value={form.plan_type} onChange={e=>set("plan_type",e.target.value)}>{["Behavior Support","Emotional Support","Learning Support","Social Support","Safety Support","General Support"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Priority"><select className="field-control" value={form.priority_level} onChange={e=>set("priority_level",e.target.value)}>{["Low","Moderate","High","Urgent Review"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Status"><select className="field-control" value={form.plan_status} onChange={e=>set("plan_status",e.target.value)}>{["Draft","Active","Under Review","Completed","Closed","Cancelled"].map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Start Date"><input className="field-control" type="date" value={form.start_date||""} onChange={e=>set("start_date",e.target.value||null)}/></Field><Field label="Review Date"><input className="field-control" type="date" value={form.review_date||""} onChange={e=>set("review_date",e.target.value||null)}/></Field><Field label="End Date"><input className="field-control" type="date" value={form.end_date||""} onChange={e=>set("end_date",e.target.value||null)}/></Field></div>{textFields.map(key=><label key={key} className="form-field"><span>{key.replaceAll("_"," ")}</span><textarea className="field-control min-h-24" value={(form[key] as string)||""} onChange={e=>set(key,e.target.value)} /></label>)}<label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(form.is_sensitive)} onChange={e=>set("is_sensitive",e.target.checked)} /> Sensitive/internal review required</label><button className="primary-button" onClick={save}>Save Support Plan</button></section></div>
+}
+function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="form-field"><span>{label}</span>{children}</label>}

@@ -10,7 +10,10 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <Link className="secondary-button" href={`/dashboard/children/${id}/development/ai-summary`}>Open AI-Assisted Summary</Link>
+        <div className="flex flex-wrap gap-2">
+          <Link className="secondary-button" href={`/dashboard/children/${id}/development/ai-summary`}>Open AI-Assisted Summary</Link>
+          <Link className="secondary-button" href={`/dashboard/children/${id}/development/support-plans`}>Open Support Plans</Link>
+        </div>
       </div>
       <ChildDevelopmentSummary childId={Number(id)} />
       <DevelopmentObservationsTable />

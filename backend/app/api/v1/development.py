@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.deps import get_db, require_permission
 from app.models.child import Child
-from app.models.development import ChildDevelopmentAISummary, ChildDevelopmentObservation, ChildDevelopmentObservationResponse, DevelopmentIndicator
+from app.models.development import ChildBehaviorSupportPlan, ChildBehaviorSupportPlanNote, ChildDevelopmentAISummary, ChildDevelopmentObservation, ChildDevelopmentObservationResponse, DevelopmentIndicator
 from app.models.user import User
-from app.schemas.development import DevelopmentAISummaryResponse, DevelopmentAISummaryReviewRequest, DevelopmentAISummaryUpdate, DevelopmentIndicatorCreate, DevelopmentIndicatorResponse, DevelopmentIndicatorUpdate, DevelopmentSummary, ObservationCreate, ObservationResponse, ObservationReviewRequest, ObservationUpdate
+from app.schemas.development import BehaviorSupportPlanCreate, BehaviorSupportPlanNoteCreate, BehaviorSupportPlanNoteResponse, BehaviorSupportPlanNoteUpdate, BehaviorSupportPlanResponse, BehaviorSupportPlanUpdate, DevelopmentAISummaryResponse, DevelopmentAISummaryReviewRequest, DevelopmentAISummaryUpdate, DevelopmentIndicatorCreate, DevelopmentIndicatorResponse, DevelopmentIndicatorUpdate, DevelopmentSummary, ObservationCreate, ObservationResponse, ObservationReviewRequest, ObservationUpdate
 from app.services.audit import AuditAction, AuditModule, add_audit_log
 from app.services.development_service import clean_observation, create_observation, development_summary, missing_monthly_rows, seed_development_indicators, update_observation
 from app.services.development_ai_service import SAFE_FOOTER, clean_ai_summary, generate_ai_summary, summary_row
+from app.services.behavior_support_service import PLAN_FOOTER, create_plan, generate_support_plan, plan_row, safe_text as support_safe_text, set_plan_status
 from app.services.excel_service import build_excel_report
 from app.services.organization_profile_service import report_branding
 from app.services.pdf_service import build_pdf_report
@@ -35,6 +36,20 @@ def ai_summary_or_404(db: Session, summary_id: int) -> ChildDevelopmentAISummary
     item = db.get(ChildDevelopmentAISummary, summary_id)
     if item is None:
         raise HTTPException(404, "Development AI summary not found")
+    return item
+
+
+def support_plan_or_404(db: Session, plan_id: int) -> ChildBehaviorSupportPlan:
+    item = db.get(ChildBehaviorSupportPlan, plan_id)
+    if item is None:
+        raise HTTPException(404, "Behavior support plan not found")
+    return item
+
+
+def support_note_or_404(db: Session, note_id: int) -> ChildBehaviorSupportPlanNote:
+    item = db.get(ChildBehaviorSupportPlanNote, note_id)
+    if item is None:
+        raise HTTPException(404, "Behavior support plan note not found")
     return item
 
 
@@ -320,6 +335,137 @@ def archive_ai_summary(summary_id: int, db: Session = Depends(get_db), user: Use
     return ai_response(db, item, user)
 
 
+@router.get("/children/{child_id}/behavior-support-plans", response_model=list[BehaviorSupportPlanResponse])
+def child_behavior_support_plans(child_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.view"))):
+    if db.get(Child, child_id) is None:
+        raise HTTPException(404, "Child not found")
+    query = select(ChildBehaviorSupportPlan).where(ChildBehaviorSupportPlan.child_id == child_id, ChildBehaviorSupportPlan.plan_status != "Archived").order_by(ChildBehaviorSupportPlan.created_at.desc(), ChildBehaviorSupportPlan.id.desc())
+    rows = db.scalars(query).all()
+    if not any(role.name in {"Admin", "Manager", "Counselor", "Warden"} for role in user.roles):
+        rows = [row for row in rows if row.plan_status == "Active"]
+    return [plan_row(db, row, user) for row in rows]
+
+
+@router.post("/children/{child_id}/behavior-support-plans", response_model=BehaviorSupportPlanResponse, status_code=201)
+def create_behavior_support_plan(child_id: int, payload: BehaviorSupportPlanCreate, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.create"))):
+    item = create_plan(db, child_id, payload, user)
+    add_audit_log(db, user_id=user.id, action=AuditAction.BEHAVIOR_SUPPORT_PLAN_CREATED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id, new_values={"child_id": child_id, "plan_code": item.plan_code})
+    db.commit(); db.refresh(item)
+    return plan_row(db, item, user)
+
+
+@router.post("/children/{child_id}/behavior-support-plans/generate", response_model=BehaviorSupportPlanResponse, status_code=201)
+def generate_behavior_support_plan(child_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.generate"))):
+    item = generate_support_plan(db, child_id, user)
+    add_audit_log(db, user_id=user.id, action=AuditAction.BEHAVIOR_SUPPORT_PLAN_GENERATED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id, new_values={"child_id": child_id, "plan_code": item.plan_code})
+    db.commit(); db.refresh(item)
+    return plan_row(db, item, user)
+
+
+@router.get("/behavior-support-plans/{plan_id}", response_model=BehaviorSupportPlanResponse)
+def get_behavior_support_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.view"))):
+    item = support_plan_or_404(db, plan_id)
+    if item.plan_status != "Active" and not any(role.name in {"Admin", "Manager", "Counselor", "Warden"} for role in user.roles):
+        raise HTTPException(403, "Active support plan access only")
+    return plan_row(db, item, user)
+
+
+@router.put("/behavior-support-plans/{plan_id}", response_model=BehaviorSupportPlanResponse)
+def update_behavior_support_plan(plan_id: int, payload: BehaviorSupportPlanUpdate, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.update"))):
+    item = support_plan_or_404(db, plan_id)
+    if item.plan_status in {"Closed", "Cancelled", "Archived"}:
+        raise HTTPException(409, "Closed, cancelled, or archived plans cannot be edited")
+    old = {"plan_status": item.plan_status, "priority_level": item.priority_level}
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if isinstance(value, str):
+            value = support_safe_text(value)
+        setattr(item, key, value)
+    item.updated_by_user_id = user.id
+    add_audit_log(db, user_id=user.id, action=AuditAction.BEHAVIOR_SUPPORT_PLAN_UPDATED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id, old_values=old, new_values=payload.model_dump(exclude_unset=True))
+    db.commit(); db.refresh(item)
+    return plan_row(db, item, user)
+
+
+def plan_status_action(plan_id: int, status: str, permission: str, db: Session, user: User):
+    item = support_plan_or_404(db, plan_id)
+    set_plan_status(item, status, user)
+    add_audit_log(db, user_id=user.id, action=AuditAction.BEHAVIOR_SUPPORT_PLAN_STATUS_CHANGED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id, new_values={"plan_status": status, "permission": permission})
+    db.commit(); db.refresh(item)
+    return plan_row(db, item, user)
+
+
+@router.post("/behavior-support-plans/{plan_id}/activate", response_model=BehaviorSupportPlanResponse)
+def activate_behavior_support_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.activate"))):
+    return plan_status_action(plan_id, "Active", "activate", db, user)
+
+
+@router.post("/behavior-support-plans/{plan_id}/review", response_model=BehaviorSupportPlanResponse)
+def review_behavior_support_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.review"))):
+    return plan_status_action(plan_id, "Under Review", "review", db, user)
+
+
+@router.post("/behavior-support-plans/{plan_id}/complete", response_model=BehaviorSupportPlanResponse)
+def complete_behavior_support_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.complete"))):
+    return plan_status_action(plan_id, "Completed", "complete", db, user)
+
+
+@router.post("/behavior-support-plans/{plan_id}/close", response_model=BehaviorSupportPlanResponse)
+def close_behavior_support_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.close"))):
+    return plan_status_action(plan_id, "Closed", "close", db, user)
+
+
+@router.post("/behavior-support-plans/{plan_id}/cancel", response_model=BehaviorSupportPlanResponse)
+def cancel_behavior_support_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.cancel"))):
+    return plan_status_action(plan_id, "Cancelled", "cancel", db, user)
+
+
+@router.delete("/behavior-support-plans/{plan_id}", response_model=BehaviorSupportPlanResponse)
+def archive_behavior_support_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.delete"))):
+    return plan_status_action(plan_id, "Archived", "delete", db, user)
+
+
+@router.get("/behavior-support-plans/{plan_id}/notes", response_model=list[BehaviorSupportPlanNoteResponse])
+def behavior_support_plan_notes(plan_id: int, db: Session = Depends(get_db), _user: User = Depends(require_permission("development.support_plan.notes.view"))):
+    item = support_plan_or_404(db, plan_id)
+    return db.scalars(select(ChildBehaviorSupportPlanNote).where(ChildBehaviorSupportPlanNote.plan_id == item.id).order_by(ChildBehaviorSupportPlanNote.note_date.desc(), ChildBehaviorSupportPlanNote.id.desc())).all()
+
+
+@router.post("/behavior-support-plans/{plan_id}/notes", response_model=BehaviorSupportPlanNoteResponse, status_code=201)
+def create_behavior_support_plan_note(plan_id: int, payload: BehaviorSupportPlanNoteCreate, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.notes.create"))):
+    plan = support_plan_or_404(db, plan_id)
+    item = ChildBehaviorSupportPlanNote(**payload.model_dump(), plan_id=plan.id, child_id=plan.child_id, created_by_user_id=user.id)
+    item.progress_note = support_safe_text(item.progress_note)
+    item.staff_action_taken = support_safe_text(item.staff_action_taken)
+    item.child_response = support_safe_text(item.child_response)
+    item.next_step = support_safe_text(item.next_step)
+    db.add(item)
+    add_audit_log(db, user_id=user.id, action=AuditAction.BEHAVIOR_SUPPORT_PLAN_NOTE_CREATED, module=AuditModule.CHILD_DEVELOPMENT, record_id=plan.id, new_values={"note_type": item.note_type})
+    db.commit(); db.refresh(item)
+    return item
+
+
+@router.put("/behavior-support-plan-notes/{note_id}", response_model=BehaviorSupportPlanNoteResponse)
+def update_behavior_support_plan_note(note_id: int, payload: BehaviorSupportPlanNoteUpdate, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.notes.update"))):
+    item = support_note_or_404(db, note_id)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if isinstance(value, str):
+            value = support_safe_text(value)
+        setattr(item, key, value)
+    add_audit_log(db, user_id=user.id, action=AuditAction.BEHAVIOR_SUPPORT_PLAN_NOTE_UPDATED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.plan_id, new_values=payload.model_dump(exclude_unset=True))
+    db.commit(); db.refresh(item)
+    return item
+
+
+@router.delete("/behavior-support-plan-notes/{note_id}")
+def delete_behavior_support_plan_note(note_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.notes.delete"))):
+    item = support_note_or_404(db, note_id)
+    plan_id = item.plan_id
+    db.delete(item)
+    add_audit_log(db, user_id=user.id, action=AuditAction.BEHAVIOR_SUPPORT_PLAN_NOTE_DELETED, module=AuditModule.CHILD_DEVELOPMENT, record_id=plan_id)
+    db.commit()
+    return {"deleted": True}
+
+
 @router.get("/reports/child-development")
 def child_development_report(
     month: int | None = Query(default=None, ge=1, le=12),
@@ -401,6 +547,53 @@ def development_ai_summary_report(
     return [summary_row(clean_ai_summary(item, user), child_row) for item, child_row in rows]
 
 
+@router.get("/reports/behavior-support-plans")
+def behavior_support_plan_report(
+    child_id: int | None = None,
+    plan_status: str | None = None,
+    plan_type: str | None = None,
+    priority_level: str | None = None,
+    month: int | None = Query(default=None, ge=1, le=12),
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    district: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("development.support_plan.view")),
+):
+    today = date.today()
+    month = month if isinstance(month, int) else None
+    year = year if isinstance(year, int) else None
+    query = select(ChildBehaviorSupportPlan, Child).join(Child, Child.id == ChildBehaviorSupportPlan.child_id).where(ChildBehaviorSupportPlan.plan_status != "Archived")
+    if child_id:
+        query = query.where(ChildBehaviorSupportPlan.child_id == child_id)
+    if plan_status:
+        query = query.where(ChildBehaviorSupportPlan.plan_status == plan_status)
+    if plan_type:
+        query = query.where(ChildBehaviorSupportPlan.plan_type == plan_type)
+    if priority_level:
+        query = query.where(ChildBehaviorSupportPlan.priority_level == priority_level)
+    if month:
+        query = query.where(extract("month", ChildBehaviorSupportPlan.created_at) == month)
+    if year:
+        query = query.where(extract("year", ChildBehaviorSupportPlan.created_at) == year)
+    if district:
+        query = query.where(Child.district.ilike(f"%{district}%"))
+    if not any(role.name in {"Admin", "Manager", "Counselor", "Warden"} for role in user.roles):
+        query = query.where(ChildBehaviorSupportPlan.plan_status == "Active")
+    rows = [plan for plan, _child in db.execute(query.order_by(ChildBehaviorSupportPlan.created_at.desc(), ChildBehaviorSupportPlan.id.desc())).all()]
+    completed_this_month = sum(1 for row in rows if row.plan_status == "Completed" and row.closed_at and row.closed_at.month == today.month and row.closed_at.year == today.year)
+    return {
+        "summary": {
+            "active_plans": sum(1 for row in rows if row.plan_status == "Active"),
+            "under_review": sum(1 for row in rows if row.plan_status == "Under Review"),
+            "high_priority": sum(1 for row in rows if row.priority_level == "High"),
+            "urgent_review": sum(1 for row in rows if row.priority_level == "Urgent Review"),
+            "completed_this_month": completed_this_month,
+            "overdue_reviews": sum(1 for row in rows if row.review_date and row.review_date < today and row.plan_status in {"Active", "Under Review"}),
+        },
+        "plans": [plan_row(db, row, user) for row in rows],
+    }
+
+
 @router.get("/reports/monthly-development-missing")
 def monthly_missing(
     month: int = Query(default_factory=lambda: date.today().month, ge=1, le=12),
@@ -465,6 +658,28 @@ def ai_summary_pdf_rows(item: ChildDevelopmentAISummary, user: User) -> list[dic
     return rows
 
 
+def behavior_plan_pdf_rows(db: Session, item: ChildBehaviorSupportPlan, user: User) -> list[dict]:
+    row = plan_row(db, item, user)
+    rows = [
+        {"section": "Plan Code", "value": row["plan_code"]},
+        {"section": "Plan Title", "value": row["plan_title"]},
+        {"section": "Plan Type", "value": row["plan_type"]},
+        {"section": "Priority", "value": row["priority_level"]},
+        {"section": "Status", "value": row["plan_status"]},
+        {"section": "Identified Behavior", "value": row.get("identified_behavior") or "Not recorded"},
+        {"section": "Possible Triggers", "value": row.get("possible_triggers") or "Not recorded"},
+        {"section": "Replacement Positive Behavior", "value": row.get("replacement_positive_behavior") or "Not recorded"},
+        {"section": "Prevention Strategies", "value": row.get("prevention_strategies") or "Not recorded"},
+        {"section": "Staff Response Plan", "value": row.get("staff_response_plan") or "Not recorded"},
+        {"section": "De-escalation Steps", "value": row.get("de_escalation_steps") or "Not recorded"},
+        {"section": "Positive Reinforcement", "value": row.get("positive_reinforcement_plan") or "Not recorded"},
+        {"section": "Counselor Recommendations", "value": row.get("counselor_recommendations") or "Restricted"},
+        {"section": "Review Date", "value": row.get("review_date") or "Not scheduled"},
+        {"section": "Footer Note", "value": PLAN_FOOTER},
+    ]
+    return rows
+
+
 @router.get("/exports/child-development-profile/{child_id}.pdf")
 def export_child_development_profile(child_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.export"))):
     profile = child_development_profile(child_id, db, user)
@@ -477,6 +692,23 @@ def export_child_development_profile(child_id: int, db: Session = Depends(get_db
 def export_development_ai_summary(summary_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.export"))):
     item = ai_summary_or_404(db, summary_id)
     return pdf_response(db, user, "AI-Assisted Child Development Summary", ai_summary_pdf_rows(item, user), f"ccms-development-ai-summary-{summary_id}")
+
+
+@router.get("/exports/behavior-support-plan/{plan_id}.pdf")
+def export_behavior_support_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.export"))):
+    item = support_plan_or_404(db, plan_id)
+    return pdf_response(db, user, "Behavior Support Plan", behavior_plan_pdf_rows(db, item, user), f"ccms-behavior-support-plan-{plan_id}")
+
+
+@router.get("/exports/child-behavior-support-plans/{child_id}.pdf")
+def export_child_behavior_support_plans(child_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.export"))):
+    rows = db.scalars(select(ChildBehaviorSupportPlan).where(ChildBehaviorSupportPlan.child_id == child_id, ChildBehaviorSupportPlan.plan_status.in_(["Active", "Under Review", "Completed", "Closed"])).order_by(ChildBehaviorSupportPlan.created_at.desc())).all()
+    pdf_rows = []
+    for item in rows:
+        pdf_rows.extend(behavior_plan_pdf_rows(db, item, user))
+    if not pdf_rows:
+        pdf_rows = [{"section": "Support Plans", "value": "No active behavior support plan found."}, {"section": "Footer Note", "value": PLAN_FOOTER}]
+    return pdf_response(db, user, "Behavior Support Plan", pdf_rows, f"ccms-child-behavior-support-plans-{child_id}")
 
 
 @router.get("/exports/child-development-ai-summary/{child_id}.pdf")
@@ -520,3 +752,11 @@ def export_development_ai_summaries(db: Session = Depends(get_db), user: User = 
     safe_rows = [{"child": row.get("child_code"), "period": f"{row['summary_period_year']}-{row['summary_period_month']:02d}", "trend": row["trend_status"], "attention_level": "Restricted" if row.get("is_sensitive") else row["attention_level"], "approval_status": row["approval_status"], "source_observations": row["source_observation_count"], "last_generated": row["generated_at"]} for row in rows]
     safe_rows.append({"child": "Footer", "period": SAFE_FOOTER, "trend": "", "attention_level": "", "approval_status": "", "source_observations": "", "last_generated": ""})
     return pdf_response(db, user, "AI-Assisted Child Development Summary", safe_rows, "ccms-development-ai-summaries")
+
+
+@router.get("/exports/behavior-support-plans.pdf")
+def export_behavior_support_plans(db: Session = Depends(get_db), user: User = Depends(require_permission("development.support_plan.export"))):
+    report = behavior_support_plan_report(db=db, user=user)
+    rows = [{"plan_code": row["plan_code"], "child": row["child_code"], "plan_type": row["plan_type"], "priority": row["priority_level"], "status": row["plan_status"], "review_date": row["review_date"] or "Not scheduled"} for row in report["plans"]]
+    rows.append({"plan_code": "Footer", "child": PLAN_FOOTER, "plan_type": "", "priority": "", "status": "", "review_date": ""})
+    return pdf_response(db, user, "Behavior Support Plan", rows, "ccms-behavior-support-plans")

@@ -191,3 +191,56 @@ def test_development_ai_summary_workflow_reports_and_exports(client, db_session)
         response = client.get(path, headers=auth)
         assert response.status_code == 200, response.text
         assert response.content.startswith(b"%PDF")
+
+
+def test_behavior_support_plan_workflow_report_notes_and_exports(client, db_session):
+    admin = make_user(db_session, "bsp-admin", "Admin")
+    viewer = make_user(db_session, "bsp-viewer", "Viewer")
+    child = make_child(db_session, "BSP-CHILD")
+    auth = headers(admin)
+    support = indicator(client, auth, "Needs confidence-building activities")
+    created_observation = client.post(
+        "/child-development-observations",
+        json={
+            "child_id": child.id,
+            "observation_date": date.today().isoformat(),
+            "observation_frequency": "Monthly",
+            "general_summary": "Current support indicator recorded.",
+            "responses": [{"indicator_id": support["id"], "value_boolean": True}],
+        },
+        headers=auth,
+    )
+    assert created_observation.status_code == 201, created_observation.text
+
+    generated = client.post(f"/children/{child.id}/behavior-support-plans/generate", headers=auth)
+    assert generated.status_code == 201, generated.text
+    plan = generated.json()
+    assert plan["plan_status"] == "Draft"
+    assert plan["plan_code"].startswith("BSP-")
+    assert "diagnosis" not in (plan["identified_behavior"] or "").lower()
+    plan_id = plan["id"]
+
+    note = client.post(
+        f"/behavior-support-plans/{plan_id}/notes",
+        json={"note_date": date.today().isoformat(), "note_type": "Progress Note", "progress_note": "Progress note recorded.", "follow_up_required": True, "next_step": "Follow-up required by staff."},
+        headers=auth,
+    )
+    assert note.status_code == 201, note.text
+    notes = client.get(f"/behavior-support-plans/{plan_id}/notes", headers=auth)
+    assert notes.status_code == 200 and len(notes.json()) == 1
+
+    active = client.post(f"/behavior-support-plans/{plan_id}/activate", headers=auth)
+    assert active.status_code == 200 and active.json()["plan_status"] == "Active"
+    report = client.get("/reports/behavior-support-plans", headers=auth)
+    assert report.status_code == 200
+    assert report.json()["summary"]["active_plans"] >= 1
+    assert any(row["id"] == plan_id for row in report.json()["plans"])
+
+    viewer_result = client.get(f"/behavior-support-plans/{plan_id}", headers=headers(viewer))
+    assert viewer_result.status_code == 200
+    assert viewer_result.json()["internal_notes"] is None
+
+    for path in [f"/exports/behavior-support-plan/{plan_id}.pdf", f"/exports/child-behavior-support-plans/{child.id}.pdf", "/exports/behavior-support-plans.pdf"]:
+        response = client.get(path, headers=auth)
+        assert response.status_code == 200, response.text
+        assert response.content.startswith(b"%PDF")

@@ -15,7 +15,7 @@ from app.models.school import School
 from app.models.sponsor import ChildSponsorship,Sponsor
 from app.models.vaccination import Vaccination
 from app.models.visitor import ChildVisit,Visitor
-from app.models.development import ChildDevelopmentAISummary, ChildDevelopmentObservation, ChildDevelopmentObservationResponse
+from app.models.development import ChildBehaviorSupportPlan, ChildDevelopmentAISummary, ChildDevelopmentObservation, ChildDevelopmentObservationResponse
 
 REQUIRED_DOCUMENTS={"Admission Form","Child Photo","Birth Certificate / Form-B","Guardian CNIC","Father Death Certificate","Medical Certificate"}
 
@@ -103,6 +103,9 @@ def build_full_child_profile(db:Session,child_id:int,roles:set[str])->dict:
     sections.append({"key":"visitor_history","title":"12. Visitor / Meeting History Summary","fields":_fields(total_visits=sum(visit_counts.values()),completed_visits=visit_counts.get("Completed",0),scheduled_visits=visit_counts.get("Scheduled",0),checked_in_visits=visit_counts.get("Checked In",0),cancelled_visits=visit_counts.get("Cancelled",0)),"columns":["Visit Date","Visitor","Relationship","Purpose","Status"],"rows":[[visit.visit_date,visitor.full_name if not viewer else "Restricted",visitor.relationship_to_child,visit.meeting_purpose,visit.visit_status] for visit,visitor in latest_visits],"empty":"No visitor or child meeting records found." if not latest_visits else None})
     development=_safe_development_summary(db,child_id,today)
     sections.append({"key":"development","title":"13. Development, Behavior & Talent Summary","fields":_fields(latest_observation_date=development["latest_observation_date"],latest_review_status=development["review_status"],monthly_review_status=development["monthly_review_status"],positive_strengths=development["positive_strengths"],support_needs=development["support_needs"],possible_areas_of_interest=development["possible_areas_of_interest"],talent_indicators=development["talent_indicators"],recommended_support=development["recommended_support"],next_review_date=development["next_review_date"],follow_up_summary=development["urgent_flag_safe_summary"]),"note":development["summary_text"]})
+    support_plan=db.scalar(select(ChildBehaviorSupportPlan).where(ChildBehaviorSupportPlan.child_id==child_id,ChildBehaviorSupportPlan.plan_status=="Active").order_by(ChildBehaviorSupportPlan.review_date.asc(),ChildBehaviorSupportPlan.id.desc()).limit(1))
+    if support_plan:
+        sections.append({"key":"behavior_support_plan","title":"14. Active Behavior Support Plan Summary","fields":_fields(plan_title=support_plan.plan_title,plan_type=support_plan.plan_type,priority_level=support_plan.priority_level,plan_status=support_plan.plan_status,replacement_positive_behavior=support_plan.replacement_positive_behavior or "Not recorded",prevention_strategies=support_plan.prevention_strategies or "Not recorded",staff_response_plan=support_plan.staff_response_plan or "Not recorded",review_date=support_plan.review_date or "Not scheduled"),"note":"Safe active support plan summary for staff care planning."})
     identity={"Child Name":child.full_name,"Child ID":child.child_id,"Admission File No":child.admission_file_no,"Status":child.status,"Gender":child.gender,"Age":_age(child.date_of_birth,today),"Date of Birth":child.date_of_birth,"Admission Date":child.admission_date,"District":child.district,"Province":child.province}
     child_photo=next((document.file_path for document in reversed(documents) if document.document_type=="Child Photo"),None)
     return {"child_id":child.id,"identity":identity,"sections":sections,"child_photo_path":child_photo}
