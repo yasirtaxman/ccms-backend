@@ -7,11 +7,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.deps import get_db, require_permission
 from app.models.child import Child
-from app.models.development import ChildDevelopmentObservation, ChildDevelopmentObservationResponse, DevelopmentIndicator
+from app.models.development import ChildDevelopmentAISummary, ChildDevelopmentObservation, ChildDevelopmentObservationResponse, DevelopmentIndicator
 from app.models.user import User
-from app.schemas.development import DevelopmentIndicatorCreate, DevelopmentIndicatorResponse, DevelopmentIndicatorUpdate, DevelopmentSummary, ObservationCreate, ObservationResponse, ObservationReviewRequest, ObservationUpdate
+from app.schemas.development import DevelopmentAISummaryResponse, DevelopmentAISummaryReviewRequest, DevelopmentAISummaryUpdate, DevelopmentIndicatorCreate, DevelopmentIndicatorResponse, DevelopmentIndicatorUpdate, DevelopmentSummary, ObservationCreate, ObservationResponse, ObservationReviewRequest, ObservationUpdate
 from app.services.audit import AuditAction, AuditModule, add_audit_log
 from app.services.development_service import clean_observation, create_observation, development_summary, missing_monthly_rows, seed_development_indicators, update_observation
+from app.services.development_ai_service import SAFE_FOOTER, clean_ai_summary, generate_ai_summary, summary_row
 from app.services.excel_service import build_excel_report
 from app.services.organization_profile_service import report_branding
 from app.services.pdf_service import build_pdf_report
@@ -28,6 +29,18 @@ def observation_or_404(db: Session, observation_id: int) -> ChildDevelopmentObse
     if item is None:
         raise HTTPException(404, "Development observation not found")
     return item
+
+
+def ai_summary_or_404(db: Session, summary_id: int) -> ChildDevelopmentAISummary:
+    item = db.get(ChildDevelopmentAISummary, summary_id)
+    if item is None:
+        raise HTTPException(404, "Development AI summary not found")
+    return item
+
+
+def ai_response(db: Session, item: ChildDevelopmentAISummary, user: User) -> dict:
+    child = db.get(Child, item.child_id)
+    return summary_row(clean_ai_summary(item, user), child)
 
 
 def obs_response(item: ChildDevelopmentObservation, user: User) -> ChildDevelopmentObservation:
@@ -213,6 +226,100 @@ def child_development_profile(child_id: int, db: Session = Depends(get_db), user
     return {"child": {"id": child.id, "child_id": child.child_id, "full_name": child.full_name, "gender": child.gender, "district": child.district, "status": child.status}, "summary": development_summary(db, child_id, user), "observations": child_observations(child_id, db, user)}
 
 
+@router.get("/children/{child_id}/development-ai-summaries", response_model=list[DevelopmentAISummaryResponse])
+def child_ai_summaries(child_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.view"))):
+    if db.get(Child, child_id) is None:
+        raise HTTPException(404, "Child not found")
+    rows = db.scalars(select(ChildDevelopmentAISummary).where(ChildDevelopmentAISummary.child_id == child_id, ChildDevelopmentAISummary.approval_status != "Archived").order_by(ChildDevelopmentAISummary.generated_at.desc(), ChildDevelopmentAISummary.id.desc())).all()
+    if not any(role.name in {"Admin", "Manager", "Counselor"} for role in user.roles):
+        rows = [row for row in rows if row.approval_status == "Approved"]
+    return [ai_response(db, row, user) for row in rows]
+
+
+@router.get("/children/{child_id}/development-ai-summaries/latest", response_model=DevelopmentAISummaryResponse)
+def latest_child_ai_summary(child_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.view"))):
+    if db.get(Child, child_id) is None:
+        raise HTTPException(404, "Child not found")
+    query = select(ChildDevelopmentAISummary).where(ChildDevelopmentAISummary.child_id == child_id, ChildDevelopmentAISummary.approval_status != "Archived")
+    if not any(role.name in {"Admin", "Manager", "Counselor"} for role in user.roles):
+        query = query.where(ChildDevelopmentAISummary.approval_status == "Approved")
+    item = db.scalar(query.order_by(ChildDevelopmentAISummary.generated_at.desc(), ChildDevelopmentAISummary.id.desc()).limit(1))
+    if item is None:
+        raise HTTPException(404, "Development AI summary not found")
+    return ai_response(db, item, user)
+
+
+@router.post("/children/{child_id}/development-ai-summaries/generate", response_model=DevelopmentAISummaryResponse, status_code=201)
+def generate_child_ai_summary(child_id: int, month: int | None = Query(default=None, ge=1, le=12), year: int | None = Query(default=None, ge=2000, le=2100), db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.generate"))):
+    item = generate_ai_summary(db, child_id, user, month=month, year=year)
+    add_audit_log(db, user_id=user.id, action=AuditAction.CHILD_DEVELOPMENT_AI_SUMMARY_GENERATED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id, new_values={"child_id": child_id, "status": item.approval_status})
+    db.commit(); db.refresh(item)
+    return ai_response(db, item, user)
+
+
+@router.get("/development-ai-summaries/{summary_id}", response_model=DevelopmentAISummaryResponse)
+def get_ai_summary(summary_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.view"))):
+    item = ai_summary_or_404(db, summary_id)
+    if item.approval_status != "Approved" and not any(role.name in {"Admin", "Manager", "Counselor"} for role in user.roles):
+        raise HTTPException(403, "Approved summary access only")
+    return ai_response(db, item, user)
+
+
+@router.put("/development-ai-summaries/{summary_id}", response_model=DevelopmentAISummaryResponse)
+def update_ai_summary(summary_id: int, payload: DevelopmentAISummaryUpdate, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.update"))):
+    item = ai_summary_or_404(db, summary_id)
+    if item.approval_status in {"Approved", "Archived"}:
+        raise HTTPException(409, "Approved or archived summaries cannot be edited")
+    old = {"approval_status": item.approval_status, "trend_status": item.trend_status, "attention_level": item.attention_level}
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    add_audit_log(db, user_id=user.id, action=AuditAction.CHILD_DEVELOPMENT_AI_SUMMARY_UPDATED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id, old_values=old, new_values=payload.model_dump(exclude_unset=True))
+    db.commit(); db.refresh(item)
+    return ai_response(db, item, user)
+
+
+@router.post("/development-ai-summaries/{summary_id}/review", response_model=DevelopmentAISummaryResponse)
+def review_ai_summary(summary_id: int, payload: DevelopmentAISummaryReviewRequest | None = None, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.review"))):
+    item = ai_summary_or_404(db, summary_id)
+    item.approval_status = "Reviewed"; item.reviewed_by_user_id = user.id; item.reviewed_at = datetime.now(UTC)
+    if payload and payload.internal_notes is not None:
+        item.internal_notes = payload.internal_notes
+    add_audit_log(db, user_id=user.id, action=AuditAction.CHILD_DEVELOPMENT_AI_SUMMARY_REVIEWED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id)
+    db.commit(); db.refresh(item)
+    return ai_response(db, item, user)
+
+
+@router.post("/development-ai-summaries/{summary_id}/approve", response_model=DevelopmentAISummaryResponse)
+def approve_ai_summary(summary_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.approve"))):
+    item = ai_summary_or_404(db, summary_id)
+    if item.approval_status not in {"Generated", "Reviewed"}:
+        raise HTTPException(409, "Only generated or reviewed summaries can be approved")
+    item.approval_status = "Approved"; item.approved_by_user_id = user.id; item.approved_at = datetime.now(UTC)
+    add_audit_log(db, user_id=user.id, action=AuditAction.CHILD_DEVELOPMENT_AI_SUMMARY_APPROVED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id)
+    db.commit(); db.refresh(item)
+    return ai_response(db, item, user)
+
+
+@router.post("/development-ai-summaries/{summary_id}/reject", response_model=DevelopmentAISummaryResponse)
+def reject_ai_summary(summary_id: int, payload: DevelopmentAISummaryReviewRequest | None = None, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.reject"))):
+    item = ai_summary_or_404(db, summary_id)
+    item.approval_status = "Rejected"; item.reviewed_by_user_id = user.id; item.reviewed_at = datetime.now(UTC)
+    if payload and payload.internal_notes is not None:
+        item.internal_notes = payload.internal_notes
+    add_audit_log(db, user_id=user.id, action=AuditAction.CHILD_DEVELOPMENT_AI_SUMMARY_REJECTED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id)
+    db.commit(); db.refresh(item)
+    return ai_response(db, item, user)
+
+
+@router.delete("/development-ai-summaries/{summary_id}", response_model=DevelopmentAISummaryResponse)
+def archive_ai_summary(summary_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.delete"))):
+    item = ai_summary_or_404(db, summary_id)
+    item.approval_status = "Archived"
+    add_audit_log(db, user_id=user.id, action=AuditAction.CHILD_DEVELOPMENT_AI_SUMMARY_ARCHIVED, module=AuditModule.CHILD_DEVELOPMENT, record_id=item.id)
+    db.commit(); db.refresh(item)
+    return ai_response(db, item, user)
+
+
 @router.get("/reports/child-development")
 def child_development_report(
     month: int | None = Query(default=None, ge=1, le=12),
@@ -262,6 +369,38 @@ def child_development_report(
     }
 
 
+@router.get("/reports/development-ai-summaries", response_model=list[DevelopmentAISummaryResponse])
+def development_ai_summary_report(
+    month: int | None = Query(default=None, ge=1, le=12),
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    child: str | None = None,
+    trend_status: str | None = None,
+    attention_level: str | None = None,
+    approval_status: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("development.ai_summary.view")),
+):
+    month = month if isinstance(month, int) else None
+    year = year if isinstance(year, int) else None
+    query = select(ChildDevelopmentAISummary, Child).join(Child, Child.id == ChildDevelopmentAISummary.child_id).where(ChildDevelopmentAISummary.approval_status != "Archived")
+    if month:
+        query = query.where(ChildDevelopmentAISummary.summary_period_month == month)
+    if year:
+        query = query.where(ChildDevelopmentAISummary.summary_period_year == year)
+    if trend_status:
+        query = query.where(ChildDevelopmentAISummary.trend_status == trend_status)
+    if attention_level:
+        query = query.where(ChildDevelopmentAISummary.attention_level == attention_level)
+    if approval_status:
+        query = query.where(ChildDevelopmentAISummary.approval_status == approval_status)
+    if child:
+        query = query.where((Child.full_name.ilike(f"%{child}%")) | (Child.child_id.ilike(f"%{child}%")))
+    if not any(role.name in {"Admin", "Manager", "Counselor"} for role in user.roles):
+        query = query.where(ChildDevelopmentAISummary.approval_status == "Approved")
+    rows = db.execute(query.order_by(ChildDevelopmentAISummary.generated_at.desc(), ChildDevelopmentAISummary.id.desc())).all()
+    return [summary_row(clean_ai_summary(item, user), child_row) for item, child_row in rows]
+
+
 @router.get("/reports/monthly-development-missing")
 def monthly_missing(
     month: int = Query(default_factory=lambda: date.today().month, ge=1, le=12),
@@ -303,12 +442,49 @@ def pdf_response(db: Session, user: User, title: str, rows: list[dict], filename
     return StreamingResponse(stream, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}.pdf"'})
 
 
+def ai_summary_pdf_rows(item: ChildDevelopmentAISummary, user: User) -> list[dict]:
+    clean = clean_ai_summary(item, user)
+    rows = [
+        {"section": "Overall Summary", "value": clean.overall_summary or "Not recorded"},
+        {"section": "Positive Strengths", "value": clean.positive_strengths_summary or "Not recorded"},
+        {"section": "Support Needs", "value": clean.support_needs_summary or "Not recorded"},
+        {"section": "Talent / Interests", "value": clean.talent_interest_summary or "Not recorded"},
+        {"section": "Behavior Trend", "value": clean.behavior_trend_summary or "Not recorded"},
+        {"section": "Learning Behavior", "value": clean.learning_behavior_summary or "Not recorded"},
+        {"section": "Social Behavior", "value": clean.social_behavior_summary or "Not recorded"},
+        {"section": "Risk Attention", "value": clean.risk_attention_summary or "Not recorded"},
+        {"section": "Staff Actions", "value": clean.recommended_staff_actions or "Not recorded"},
+        {"section": "Counselor Actions", "value": clean.recommended_counselor_actions or "Restricted"},
+        {"section": "Next Review Date", "value": clean.next_review_date or "Not scheduled"},
+        {"section": "Trend Status", "value": clean.trend_status},
+        {"section": "Attention Level", "value": clean.attention_level if not clean.is_sensitive else "Restricted"},
+        {"section": "Footer Note", "value": SAFE_FOOTER},
+    ]
+    if clean.internal_notes:
+        rows.append({"section": "Internal Notes", "value": clean.internal_notes})
+    return rows
+
+
 @router.get("/exports/child-development-profile/{child_id}.pdf")
 def export_child_development_profile(child_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.export"))):
     profile = child_development_profile(child_id, db, user)
     summary = profile["summary"]
     rows = [{"section": "Latest Observation", "value": summary["latest_observation_date"] or "Not recorded"}, {"section": "Review Status", "value": summary["review_status"]}, {"section": "Monthly Review", "value": summary["monthly_review_status"]}, {"section": "Positive Strengths", "value": ", ".join(summary["positive_strengths"]) or "Not recorded"}, {"section": "Support Needs", "value": ", ".join(summary["support_needs"]) or "Not recorded"}, {"section": "Possible Areas of Interest", "value": ", ".join(summary["possible_areas_of_interest"]) or "Not recorded"}, {"section": "Suggested Support", "value": summary["recommended_support"]}, {"section": "Safe Summary", "value": summary["summary_text"]}]
     return pdf_response(db, user, "Child Development Profile", rows, f"ccms-child-development-profile-{child_id}")
+
+
+@router.get("/exports/development-ai-summary/{summary_id}.pdf")
+def export_development_ai_summary(summary_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.export"))):
+    item = ai_summary_or_404(db, summary_id)
+    return pdf_response(db, user, "AI-Assisted Child Development Summary", ai_summary_pdf_rows(item, user), f"ccms-development-ai-summary-{summary_id}")
+
+
+@router.get("/exports/child-development-ai-summary/{child_id}.pdf")
+def export_child_development_ai_summary(child_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.export"))):
+    item = db.scalar(select(ChildDevelopmentAISummary).where(ChildDevelopmentAISummary.child_id == child_id, ChildDevelopmentAISummary.approval_status == "Approved").order_by(ChildDevelopmentAISummary.approved_at.desc(), ChildDevelopmentAISummary.id.desc()).limit(1))
+    if item is None:
+        raise HTTPException(404, "Approved development AI summary not found")
+    return pdf_response(db, user, "AI-Assisted Child Development Summary", ai_summary_pdf_rows(item, user), f"ccms-child-development-ai-summary-{child_id}")
 
 
 @router.get("/exports/child-development-observations.pdf")
@@ -336,3 +512,11 @@ def export_monthly_development_summary(month: int = Query(default_factory=lambda
 @router.get("/exports/child-talent-summary.pdf")
 def export_child_talent_summary(db: Session = Depends(get_db), user: User = Depends(require_permission("development.export"))):
     return pdf_response(db, user, "Child Talent Summary", talent_rows(db, user), "ccms-child-talent-summary")
+
+
+@router.get("/exports/development-ai-summaries.pdf")
+def export_development_ai_summaries(db: Session = Depends(get_db), user: User = Depends(require_permission("development.ai_summary.export"))):
+    rows = development_ai_summary_report(db=db, user=user)
+    safe_rows = [{"child": row.get("child_code"), "period": f"{row['summary_period_year']}-{row['summary_period_month']:02d}", "trend": row["trend_status"], "attention_level": "Restricted" if row.get("is_sensitive") else row["attention_level"], "approval_status": row["approval_status"], "source_observations": row["source_observation_count"], "last_generated": row["generated_at"]} for row in rows]
+    safe_rows.append({"child": "Footer", "period": SAFE_FOOTER, "trend": "", "attention_level": "", "approval_status": "", "source_observations": "", "last_generated": ""})
+    return pdf_response(db, user, "AI-Assisted Child Development Summary", safe_rows, "ccms-development-ai-summaries")

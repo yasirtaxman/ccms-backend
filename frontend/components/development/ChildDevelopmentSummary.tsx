@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Download, Eye, Plus } from "lucide-react";
+import { Download, Eye, Plus, Sparkles } from "lucide-react";
 import { developmentApi } from "@/lib/development";
 import { downloadAuthenticated } from "@/lib/children";
 import { apiErrorMessage } from "@/lib/api";
@@ -23,6 +23,7 @@ export function ChildDevelopmentSummary({ childId }: { childId: number }) {
       <div><h2>Development, Behavior & Talent Summary</h2><p className="mt-1 text-sm text-slate-500">Safe child-wise summary for support and guidance.</p></div>
       <div className="flex flex-wrap gap-2">
         {hasPermission("development.create") && <Link className="secondary-button" href={`/dashboard/development/observations/new?child_id=${childId}`}><Plus size={16} />Add Observation</Link>}
+        {hasPermission("development.ai_summary.view") && <Link className="secondary-button" href={`/dashboard/children/${childId}/development/ai-summary`}><Sparkles size={16} />AI Summary</Link>}
         <Link className="secondary-button" href={`/dashboard/children/${childId}/development`}><Eye size={16} />View Full Development Profile</Link>
         {hasPermission("development.export") && <button className="secondary-button" onClick={() => downloadAuthenticated(`/exports/child-development-profile/${childId}.pdf`, `ccms-child-development-${childId}.pdf`)}><Download size={16} />Export PDF</button>}
       </div>

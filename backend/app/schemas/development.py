@@ -7,6 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 Frequency = Literal["Monthly", "Weekly", "As Needed", "Incident Based", "Counselor Review", "Teacher Review", "Warden Review"]
 ReviewStatus = Literal["Draft", "Submitted", "Reviewed", "Needs Follow-up", "Closed", "Archived"]
 InputType = Literal["checkbox", "dropdown", "rating_1_to_5", "yes_no", "multi_select", "short_note"]
+AITrendStatus = Literal["Improving", "Stable", "Needs Attention", "Mixed", "Not Enough Data"]
+AIAttentionLevel = Literal["Low", "Moderate", "High", "Urgent Review"]
+AIApprovalStatus = Literal["Draft", "Generated", "Reviewed", "Approved", "Rejected", "Archived"]
 
 
 class DevelopmentIndicatorBase(BaseModel):
@@ -145,3 +148,66 @@ class DevelopmentSummary(BaseModel):
     summary_text: str
     urgent_flag_safe_summary: str
     observation_count: int
+
+
+class DevelopmentAISummaryUpdate(BaseModel):
+    overall_summary: str | None = None
+    positive_strengths_summary: str | None = None
+    support_needs_summary: str | None = None
+    talent_interest_summary: str | None = None
+    behavior_trend_summary: str | None = None
+    emotional_wellbeing_summary: str | None = None
+    learning_behavior_summary: str | None = None
+    social_behavior_summary: str | None = None
+    risk_attention_summary: str | None = None
+    recommended_staff_actions: str | None = None
+    recommended_counselor_actions: str | None = None
+    next_review_date: date | None = None
+    trend_status: AITrendStatus | None = None
+    attention_level: AIAttentionLevel | None = None
+    internal_notes: str | None = None
+    is_sensitive: bool | None = None
+
+
+class DevelopmentAISummaryReviewRequest(BaseModel):
+    internal_notes: str | None = None
+
+
+class DevelopmentAISummaryResponse(BaseModel):
+    id: int
+    child_id: int
+    summary_period_month: int
+    summary_period_year: int
+    summary_type: str
+    overall_summary: str | None
+    positive_strengths_summary: str | None
+    support_needs_summary: str | None
+    talent_interest_summary: str | None
+    behavior_trend_summary: str | None
+    emotional_wellbeing_summary: str | None
+    learning_behavior_summary: str | None
+    social_behavior_summary: str | None
+    risk_attention_summary: str | None
+    recommended_staff_actions: str | None
+    recommended_counselor_actions: str | None
+    next_review_date: date | None
+    trend_status: str
+    attention_level: str
+    approval_status: str
+    generated_by_user_id: int | None
+    reviewed_by_user_id: int | None
+    approved_by_user_id: int | None
+    generated_at: datetime
+    reviewed_at: datetime | None
+    approved_at: datetime | None
+    source_observation_count: int
+    source_date_from: date | None
+    source_date_to: date | None
+    is_ai_generated: bool
+    is_sensitive: bool
+    internal_notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    child_code: str | None = None
+    child_name: str | None = None
+    model_config = ConfigDict(from_attributes=True)
