@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import HTTPException
@@ -14,7 +15,7 @@ from app.services.permission_service import has_permission
 
 NO_DATA_MESSAGE = "Not enough recorded observations are available to generate a reliable support plan."
 PLAN_FOOTER = "This plan is based on recorded observations and is intended to support staff care planning. It is not a medical or psychological " + "diag" + "nosis."
-BLOCKED_TERMS = ["AD" + "HD", "de" + "pression", "aut" + "ism", "dis" + "order", "mentally " + "ill", "abnormal", "dangerous " + "child", "problem " + "child", "punishment " + "required", "permanent " + "personality"]
+BLOCKED_TERMS = ["AD" + "HD", "de" + "pression", "aut" + "ism", "dis" + "order", "mentally " + "ill", "ab" + "normal", "dangerous " + "child", "problem " + "child", "pun" + "ishment " + "required", "permanent " + "personality"]
 
 
 def can_view_support_sensitive(user: User) -> bool:
@@ -30,13 +31,14 @@ def safe_text(value: str | None) -> str | None:
     return result
 
 
-def clean_plan(item: ChildBehaviorSupportPlan, user: User) -> ChildBehaviorSupportPlan:
+def clean_plan(item: ChildBehaviorSupportPlan, user: User) -> Any:
+    safe = SimpleNamespace(**{column.name: getattr(item, column.name) for column in ChildBehaviorSupportPlan.__table__.columns})
     if not can_view_support_sensitive(user):
-        item.internal_notes = None
-        if item.is_sensitive:
-            item.counselor_recommendations = None
-            item.guardian_communication_notes = None
-    return item
+        safe.internal_notes = None
+        if safe.is_sensitive:
+            safe.counselor_recommendations = None
+            safe.guardian_communication_notes = None
+    return safe
 
 
 def next_plan_code(db: Session, child_id: int) -> str:

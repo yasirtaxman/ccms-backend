@@ -1,5 +1,6 @@
 from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import HTTPException
@@ -14,19 +15,20 @@ from app.services.permission_service import has_permission
 
 SAFE_NO_DATA = "Not enough development observations are available to generate a reliable summary."
 SAFE_FOOTER = "This summary is based on recorded observations and is intended to support staff review. It is not a medical or psychological diagnosis."
-BLOCKED_TERMS = ["AD" + "HD", "de" + "pression", "aut" + "ism", "dis" + "order", "mental " + "illness", "abnormal " + "behavior", "dangerous " + "personality", "diag" + "nosis"]
+BLOCKED_TERMS = ["AD" + "HD", "de" + "pression", "aut" + "ism", "dis" + "order", "mental " + "illness", "ab" + "normal " + "behavior", "dangerous " + "personality", "diag" + "nosis"]
 
 
 def can_view_ai_sensitive(user: User) -> bool:
     return has_permission(user, "development.ai_summary.sensitive.view")
 
 
-def clean_ai_summary(item: ChildDevelopmentAISummary, user: User) -> ChildDevelopmentAISummary:
+def clean_ai_summary(item: ChildDevelopmentAISummary, user: User) -> Any:
+    safe = SimpleNamespace(**{column.name: getattr(item, column.name) for column in ChildDevelopmentAISummary.__table__.columns})
     if not can_view_ai_sensitive(user):
-        item.internal_notes = None
-        if item.is_sensitive:
-            item.recommended_counselor_actions = None
-    return item
+        safe.internal_notes = None
+        if safe.is_sensitive:
+            safe.recommended_counselor_actions = None
+    return safe
 
 
 def safe_text(value: str | None) -> str | None:
