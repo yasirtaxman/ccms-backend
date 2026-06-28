@@ -32,6 +32,7 @@ from app.models.child_attendance import DailyChildAttendance
 from app.models.permission import Permission,RolePermission
 from app.models.visitor import Visitor,ChildVisit
 from app.models.organization_profile import OrganizationProfile
+from app.models.development import DevelopmentIndicator,ChildDevelopmentObservation,ChildDevelopmentObservationResponse
 
 config = context.config
 
