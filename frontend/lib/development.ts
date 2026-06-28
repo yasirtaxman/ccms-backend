@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import type { DevelopmentAISummary,DevelopmentAISummaryUpdate,DevelopmentIndicator,DevelopmentObservation,DevelopmentObservationPayload,DevelopmentReport,DevelopmentSummary } from "@/types/development";
+import type { BehaviorSupportPlan,BehaviorSupportPlanNote,BehaviorSupportPlanNotePayload,BehaviorSupportPlanPayload,BehaviorSupportPlanReport,DevelopmentAISummary,DevelopmentAISummaryUpdate,DevelopmentIndicator,DevelopmentObservation,DevelopmentObservationPayload,DevelopmentReport,DevelopmentSummary } from "@/types/development";
 
 export const developmentApi={
   indicators:async(include_inactive=false)=>(await api.get<DevelopmentIndicator[]>("/development-indicators",{params:{include_inactive}})).data,
@@ -31,4 +31,20 @@ export const developmentApi={
   rejectAiSummary:async(id:number,internal_notes?:string)=>(await api.post<DevelopmentAISummary>(`/development-ai-summaries/${id}/reject`,{internal_notes})).data,
   archiveAiSummary:async(id:number)=>(await api.delete<DevelopmentAISummary>(`/development-ai-summaries/${id}`)).data,
   aiSummaryReport:async(params:Record<string,string|number|undefined>={})=>(await api.get<DevelopmentAISummary[]>("/reports/development-ai-summaries",{params})).data,
+  childSupportPlans:async(childId:number)=>(await api.get<BehaviorSupportPlan[]>(`/children/${childId}/behavior-support-plans`)).data,
+  createSupportPlan:async(childId:number,payload:BehaviorSupportPlanPayload)=>(await api.post<BehaviorSupportPlan>(`/children/${childId}/behavior-support-plans`,payload)).data,
+  generateSupportPlan:async(childId:number)=>(await api.post<BehaviorSupportPlan>(`/children/${childId}/behavior-support-plans/generate`)).data,
+  getSupportPlan:async(id:number)=>(await api.get<BehaviorSupportPlan>(`/behavior-support-plans/${id}`)).data,
+  updateSupportPlan:async(id:number,payload:Partial<BehaviorSupportPlanPayload>)=>(await api.put<BehaviorSupportPlan>(`/behavior-support-plans/${id}`,payload)).data,
+  activateSupportPlan:async(id:number)=>(await api.post<BehaviorSupportPlan>(`/behavior-support-plans/${id}/activate`)).data,
+  reviewSupportPlan:async(id:number)=>(await api.post<BehaviorSupportPlan>(`/behavior-support-plans/${id}/review`)).data,
+  completeSupportPlan:async(id:number)=>(await api.post<BehaviorSupportPlan>(`/behavior-support-plans/${id}/complete`)).data,
+  closeSupportPlan:async(id:number)=>(await api.post<BehaviorSupportPlan>(`/behavior-support-plans/${id}/close`)).data,
+  cancelSupportPlan:async(id:number)=>(await api.post<BehaviorSupportPlan>(`/behavior-support-plans/${id}/cancel`)).data,
+  archiveSupportPlan:async(id:number)=>(await api.delete<BehaviorSupportPlan>(`/behavior-support-plans/${id}`)).data,
+  supportPlanNotes:async(id:number)=>(await api.get<BehaviorSupportPlanNote[]>(`/behavior-support-plans/${id}/notes`)).data,
+  createSupportPlanNote:async(id:number,payload:BehaviorSupportPlanNotePayload)=>(await api.post<BehaviorSupportPlanNote>(`/behavior-support-plans/${id}/notes`,payload)).data,
+  updateSupportPlanNote:async(id:number,payload:Partial<BehaviorSupportPlanNotePayload>)=>(await api.put<BehaviorSupportPlanNote>(`/behavior-support-plan-notes/${id}`,payload)).data,
+  deleteSupportPlanNote:async(id:number)=>(await api.delete(`/behavior-support-plan-notes/${id}`)).data,
+  supportPlanReport:async(params:Record<string,string|number|undefined>={})=>(await api.get<BehaviorSupportPlanReport>("/reports/behavior-support-plans",{params})).data,
 };

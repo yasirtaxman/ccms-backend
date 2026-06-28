@@ -10,6 +10,10 @@ InputType = Literal["checkbox", "dropdown", "rating_1_to_5", "yes_no", "multi_se
 AITrendStatus = Literal["Improving", "Stable", "Needs Attention", "Mixed", "Not Enough Data"]
 AIAttentionLevel = Literal["Low", "Moderate", "High", "Urgent Review"]
 AIApprovalStatus = Literal["Draft", "Generated", "Reviewed", "Approved", "Rejected", "Archived"]
+SupportPlanType = Literal["Behavior Support", "Emotional Support", "Learning Support", "Social Support", "Safety Support", "General Support"]
+SupportPlanStatus = Literal["Draft", "Active", "Under Review", "Completed", "Closed", "Cancelled", "Archived"]
+SupportPriority = Literal["Low", "Moderate", "High", "Urgent Review"]
+SupportNoteType = Literal["Progress Note", "Staff Action", "Counselor Review", "Follow-up", "Incident Follow-up", "Closure Note"]
 
 
 class DevelopmentIndicatorBase(BaseModel):
@@ -210,4 +214,124 @@ class DevelopmentAISummaryResponse(BaseModel):
     updated_at: datetime
     child_code: str | None = None
     child_name: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BehaviorSupportPlanBase(BaseModel):
+    plan_title: str = Field(min_length=2, max_length=255)
+    plan_type: SupportPlanType = "Behavior Support"
+    plan_status: SupportPlanStatus = "Draft"
+    priority_level: SupportPriority = "Low"
+    identified_behavior: str | None = None
+    behavior_description: str | None = None
+    possible_triggers: str | None = None
+    known_patterns: str | None = None
+    time_location_context: str | None = None
+    replacement_positive_behavior: str | None = None
+    prevention_strategies: str | None = None
+    staff_response_plan: str | None = None
+    de_escalation_steps: str | None = None
+    positive_reinforcement_plan: str | None = None
+    environment_adjustments: str | None = None
+    communication_support: str | None = None
+    learning_support: str | None = None
+    social_support: str | None = None
+    counselor_recommendations: str | None = None
+    guardian_communication_notes: str | None = None
+    start_date: date | None = None
+    review_date: date | None = None
+    end_date: date | None = None
+    created_from_observation_id: int | None = None
+    created_from_ai_summary_id: int | None = None
+    responsible_staff_id: int | None = None
+    counselor_id: int | None = None
+    progress_summary: str | None = None
+    review_outcome: str | None = None
+    closure_reason: str | None = None
+    is_sensitive: bool = False
+    internal_notes: str | None = None
+
+
+class BehaviorSupportPlanCreate(BehaviorSupportPlanBase):
+    pass
+
+
+class BehaviorSupportPlanUpdate(BaseModel):
+    plan_title: str | None = Field(default=None, min_length=2, max_length=255)
+    plan_type: SupportPlanType | None = None
+    plan_status: SupportPlanStatus | None = None
+    priority_level: SupportPriority | None = None
+    identified_behavior: str | None = None
+    behavior_description: str | None = None
+    possible_triggers: str | None = None
+    known_patterns: str | None = None
+    time_location_context: str | None = None
+    replacement_positive_behavior: str | None = None
+    prevention_strategies: str | None = None
+    staff_response_plan: str | None = None
+    de_escalation_steps: str | None = None
+    positive_reinforcement_plan: str | None = None
+    environment_adjustments: str | None = None
+    communication_support: str | None = None
+    learning_support: str | None = None
+    social_support: str | None = None
+    counselor_recommendations: str | None = None
+    guardian_communication_notes: str | None = None
+    start_date: date | None = None
+    review_date: date | None = None
+    end_date: date | None = None
+    responsible_staff_id: int | None = None
+    counselor_id: int | None = None
+    progress_summary: str | None = None
+    review_outcome: str | None = None
+    closure_reason: str | None = None
+    is_sensitive: bool | None = None
+    internal_notes: str | None = None
+
+
+class BehaviorSupportPlanResponse(BehaviorSupportPlanBase):
+    id: int
+    child_id: int
+    plan_code: str
+    approved_by_user_id: int | None
+    created_by_user_id: int
+    updated_by_user_id: int
+    created_at: datetime
+    updated_at: datetime
+    approved_at: datetime | None
+    closed_at: datetime | None
+    child_code: str | None = None
+    child_name: str | None = None
+    responsible_staff_name: str | None = None
+    latest_progress_note: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BehaviorSupportPlanNoteCreate(BaseModel):
+    note_date: date
+    note_type: SupportNoteType = "Progress Note"
+    progress_note: str | None = None
+    staff_action_taken: str | None = None
+    child_response: str | None = None
+    follow_up_required: bool = False
+    next_step: str | None = None
+
+
+class BehaviorSupportPlanNoteUpdate(BaseModel):
+    note_date: date | None = None
+    note_type: SupportNoteType | None = None
+    progress_note: str | None = None
+    staff_action_taken: str | None = None
+    child_response: str | None = None
+    follow_up_required: bool | None = None
+    next_step: str | None = None
+
+
+class BehaviorSupportPlanNoteResponse(BehaviorSupportPlanNoteCreate):
+    id: int
+    plan_id: int
+    child_id: int
+    created_by_user_id: int
+    created_at: datetime
+    updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

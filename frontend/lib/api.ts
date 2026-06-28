@@ -41,3 +41,12 @@ export function loginErrorMessage(error: unknown): string {
   if (status >= 500) return "Login request failed. Please check backend logs.";
   return body?.errors?.[0]?.message || body?.detail || body?.message || "Login request failed. Please check backend logs.";
 }
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const response = await api.post<{ message: string }>("/auth/change-password", {
+    current_password: currentPassword,
+    new_password: newPassword,
+    confirm_password: newPassword,
+  });
+  return response.data;
+}
