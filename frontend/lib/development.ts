@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import type { DevelopmentIndicator,DevelopmentObservation,DevelopmentObservationPayload,DevelopmentReport,DevelopmentSummary } from "@/types/development";
+import type { DevelopmentAISummary,DevelopmentAISummaryUpdate,DevelopmentIndicator,DevelopmentObservation,DevelopmentObservationPayload,DevelopmentReport,DevelopmentSummary } from "@/types/development";
 
 export const developmentApi={
   indicators:async(include_inactive=false)=>(await api.get<DevelopmentIndicator[]>("/development-indicators",{params:{include_inactive}})).data,
@@ -21,4 +21,14 @@ export const developmentApi={
   report:async(params:Record<string,string|number|undefined>={})=>(await api.get<DevelopmentReport>("/reports/child-development",{params})).data,
   missing:async(params:Record<string,string|number|undefined>={})=>(await api.get<DevelopmentReport["missing_monthly_observations"]>("/reports/monthly-development-missing",{params})).data,
   talent:async(params:Record<string,string|number|undefined>={})=>(await api.get<DevelopmentReport["talent_summary"]>("/reports/child-talent-summary",{params})).data,
+  aiSummaries:async(childId:number)=>(await api.get<DevelopmentAISummary[]>(`/children/${childId}/development-ai-summaries`)).data,
+  latestAiSummary:async(childId:number)=>(await api.get<DevelopmentAISummary>(`/children/${childId}/development-ai-summaries/latest`)).data,
+  generateAiSummary:async(childId:number,params:Record<string,string|number|undefined>={})=>(await api.post<DevelopmentAISummary>(`/children/${childId}/development-ai-summaries/generate`,null,{params})).data,
+  getAiSummary:async(id:number)=>(await api.get<DevelopmentAISummary>(`/development-ai-summaries/${id}`)).data,
+  updateAiSummary:async(id:number,payload:DevelopmentAISummaryUpdate)=>(await api.put<DevelopmentAISummary>(`/development-ai-summaries/${id}`,payload)).data,
+  reviewAiSummary:async(id:number,internal_notes?:string)=>(await api.post<DevelopmentAISummary>(`/development-ai-summaries/${id}/review`,{internal_notes})).data,
+  approveAiSummary:async(id:number)=>(await api.post<DevelopmentAISummary>(`/development-ai-summaries/${id}/approve`)).data,
+  rejectAiSummary:async(id:number,internal_notes?:string)=>(await api.post<DevelopmentAISummary>(`/development-ai-summaries/${id}/reject`,{internal_notes})).data,
+  archiveAiSummary:async(id:number)=>(await api.delete<DevelopmentAISummary>(`/development-ai-summaries/${id}`)).data,
+  aiSummaryReport:async(params:Record<string,string|number|undefined>={})=>(await api.get<DevelopmentAISummary[]>("/reports/development-ai-summaries",{params})).data,
 };

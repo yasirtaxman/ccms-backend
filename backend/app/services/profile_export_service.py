@@ -15,7 +15,7 @@ from app.models.school import School
 from app.models.sponsor import ChildSponsorship,Sponsor
 from app.models.vaccination import Vaccination
 from app.models.visitor import ChildVisit,Visitor
-from app.models.development import ChildDevelopmentObservation, ChildDevelopmentObservationResponse
+from app.models.development import ChildDevelopmentAISummary, ChildDevelopmentObservation, ChildDevelopmentObservationResponse
 
 REQUIRED_DOCUMENTS={"Admission Form","Child Photo","Birth Certificate / Form-B","Guardian CNIC","Father Death Certificate","Medical Certificate"}
 
@@ -27,6 +27,12 @@ def _yes(value)->str:return "Yes" if value else "No"
 def _fields(**values):return [(key.replace("_"," ").title(),value) for key,value in values.items()]
 
 def _safe_development_summary(db:Session,child_id:int,today:date)->dict:
+    ai_summary=db.scalar(select(ChildDevelopmentAISummary).where(ChildDevelopmentAISummary.child_id==child_id,ChildDevelopmentAISummary.approval_status=="Approved").order_by(ChildDevelopmentAISummary.approved_at.desc(),ChildDevelopmentAISummary.id.desc()).limit(1))
+    if ai_summary:
+        fields={"latest_observation_date":ai_summary.source_date_to or "Not recorded","review_status":"Approved AI-assisted summary","monthly_review_status":f"{ai_summary.summary_period_year}-{ai_summary.summary_period_month:02d}","positive_strengths":ai_summary.positive_strengths_summary or "Not recorded","support_needs":ai_summary.support_needs_summary or "Not recorded","possible_areas_of_interest":ai_summary.talent_interest_summary or "Not recorded","talent_indicators":ai_summary.talent_interest_summary or "Not recorded","recommended_support":ai_summary.recommended_staff_actions or "Not recorded","next_review_date":ai_summary.next_review_date or "Not scheduled","summary_text":ai_summary.overall_summary or "Approved development summary available.","urgent_flag_safe_summary":"Follow-up recommended" if ai_summary.attention_level in {"High","Urgent Review"} else "No urgent follow-up flag in visible summary"}
+        if not ai_summary.is_sensitive:
+            fields["urgent_flag_safe_summary"]=f"Trend: {ai_summary.trend_status}; Attention: {ai_summary.attention_level}"
+        return fields
     observations=list(db.scalars(select(ChildDevelopmentObservation).where(ChildDevelopmentObservation.child_id==child_id,ChildDevelopmentObservation.review_status!="Archived").order_by(ChildDevelopmentObservation.observation_date.desc(),ChildDevelopmentObservation.id.desc())).all())
     latest=observations[0] if observations else None
     if latest is None:

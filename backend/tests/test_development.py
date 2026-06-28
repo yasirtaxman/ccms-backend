@@ -141,3 +141,53 @@ def test_development_report_contracts(client, db_session):
     assert isinstance(row["possible_areas_of_interest"], list)
     assert isinstance(row["positive_strengths"], list)
     assert isinstance(row["support_needs"], list)
+
+
+def test_development_ai_summary_workflow_reports_and_exports(client, db_session):
+    admin = make_user(db_session, "dev-ai-admin", "Admin")
+    viewer = make_user(db_session, "dev-ai-viewer", "Viewer")
+    child = make_child(db_session, "DEV-AI")
+    auth = headers(admin)
+    support = indicator(client, auth, "Needs confidence-building activities")
+    talent = indicator(client, auth, "Computer skill interest")
+    created = client.post(
+        "/child-development-observations",
+        json={
+            "child_id": child.id,
+            "observation_date": date.today().isoformat(),
+            "observation_frequency": "Monthly",
+            "general_summary": "Current indicator supports structured review.",
+            "responses": [
+                {"indicator_id": support["id"], "value_boolean": True},
+                {"indicator_id": talent["id"], "value_number": 5},
+            ],
+        },
+        headers=auth,
+    )
+    assert created.status_code == 201, created.text
+
+    generated = client.post(f"/children/{child.id}/development-ai-summaries/generate?month={date.today().month}&year={date.today().year}", headers=auth)
+    assert generated.status_code == 201, generated.text
+    summary = generated.json()
+    assert summary["approval_status"] == "Generated"
+    assert "diagnosis" not in summary["overall_summary"].lower()
+    summary_id = summary["id"]
+
+    report = client.get("/reports/development-ai-summaries", headers=auth)
+    assert report.status_code == 200
+    assert any(row["id"] == summary_id and row["child_code"] == child.child_id for row in report.json())
+
+    reviewed = client.post(f"/development-ai-summaries/{summary_id}/review", json={"internal_notes": "Manager reviewed for staff support."}, headers=auth)
+    assert reviewed.status_code == 200 and reviewed.json()["approval_status"] == "Reviewed"
+    approved = client.post(f"/development-ai-summaries/{summary_id}/approve", headers=auth)
+    assert approved.status_code == 200 and approved.json()["approval_status"] == "Approved"
+
+    latest = client.get(f"/children/{child.id}/development-ai-summaries/latest", headers=headers(viewer))
+    assert latest.status_code == 200
+    assert latest.json()["approval_status"] == "Approved"
+    assert latest.json()["internal_notes"] is None
+
+    for path in [f"/exports/development-ai-summary/{summary_id}.pdf", f"/exports/child-development-ai-summary/{child.id}.pdf", "/exports/development-ai-summaries.pdf"]:
+        response = client.get(path, headers=auth)
+        assert response.status_code == 200, response.text
+        assert response.content.startswith(b"%PDF")
