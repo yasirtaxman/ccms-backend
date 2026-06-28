@@ -1,0 +1,15 @@
+export interface DevelopmentIndicator {
+  id:number;indicator_code:string;indicator_name:string;category:string;description:string|null;input_type:"checkbox"|"dropdown"|"rating_1_to_5"|"yes_no"|"multi_select"|"short_note";options_json:string[]|Record<string,unknown>|null;is_required:boolean;is_active:boolean;is_sensitive:boolean;sort_order:number;created_at:string;updated_at:string;
+}
+export interface ObservationResponseInput {indicator_id:number;value_text?:string|null;value_number?:number|null;value_boolean?:boolean|null;value_json?:unknown[]|Record<string,unknown>|null;note?:string|null}
+export interface DevelopmentObservation {
+  id:number;child_id:number;observation_date:string;observation_period_start:string|null;observation_period_end:string|null;observation_frequency:string;observed_by_user_id:number|null;observer_role:string|null;review_status:string;general_summary:string|null;recommended_support:string|null;private_notes:string|null;urgent_flag:boolean;next_review_date:string|null;submitted_at:string|null;reviewed_by_user_id:number|null;reviewed_at:string|null;closed_at:string|null;created_at:string;updated_at:string;created_by_user_id:number;updated_by_user_id:number;responses:(ObservationResponseInput&{id:number;indicator?:DevelopmentIndicator|null;created_at:string;updated_at:string})[];
+}
+export interface DevelopmentObservationPayload {
+  child_id:number;observation_date:string;observation_period_start?:string|null;observation_period_end?:string|null;observation_frequency:string;observer_role?:string|null;review_status?:string;next_review_date?:string|null;general_summary?:string|null;recommended_support?:string|null;private_notes?:string|null;responses:ObservationResponseInput[];
+}
+export interface DevelopmentSummary {child_id:number;latest_observation_date:string|null;review_status:string;monthly_review_status:string;positive_strengths:string[];strongest_positive_strengths:string[];support_needs:string[];possible_areas_of_interest:string[];talent_indicators:string[];recommended_support:string;risk_flags_requiring_review:string[];next_review_date:string|null;summary_text:string;urgent_flag_safe_summary:string;observation_count:number}
+export interface DevelopmentReportSummary extends Record<string, number> {reviewed_this_month:number;missing_monthly:number;needs_follow_up:number;urgent_flags:number;support_needs:number;talent_indicators:number}
+export interface DevelopmentReportMissingRow extends Record<string, unknown> {id:number;child_id:number;child_code:string;full_name:string;district:string|null;status:string|null;last_observation_date:string|null;month:string}
+export interface DevelopmentReportTalentRow extends Record<string, unknown> {id:number;child_id:number;child_code:string;full_name:string;possible_areas_of_interest:string[];positive_strengths:string[];support_needs:string[];last_observation_date:string|null}
+export interface DevelopmentReport {summary:DevelopmentReportSummary;observations:DevelopmentObservation[];missing_monthly_observations:DevelopmentReportMissingRow[];talent_summary:DevelopmentReportTalentRow[]}

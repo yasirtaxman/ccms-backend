@@ -15,6 +15,7 @@ from app.models.school import School
 from app.models.sponsor import ChildSponsorship,Sponsor
 from app.models.vaccination import Vaccination
 from app.models.visitor import ChildVisit,Visitor
+from app.models.development import ChildDevelopmentObservation, ChildDevelopmentObservationResponse
 
 REQUIRED_DOCUMENTS={"Admission Form","Child Photo","Birth Certificate / Form-B","Guardian CNIC","Father Death Certificate","Medical Certificate"}
 
@@ -24,6 +25,25 @@ def _mask(value:str|None,visible:int=4)->str:
     compact=value.strip();return "*"*max(len(compact)-visible,4)+compact[-visible:]
 def _yes(value)->str:return "Yes" if value else "No"
 def _fields(**values):return [(key.replace("_"," ").title(),value) for key,value in values.items()]
+
+def _safe_development_summary(db:Session,child_id:int,today:date)->dict:
+    observations=list(db.scalars(select(ChildDevelopmentObservation).where(ChildDevelopmentObservation.child_id==child_id,ChildDevelopmentObservation.review_status!="Archived").order_by(ChildDevelopmentObservation.observation_date.desc(),ChildDevelopmentObservation.id.desc())).all())
+    latest=observations[0] if observations else None
+    if latest is None:
+        return {"latest_observation_date":"Not recorded","review_status":"Not recorded","monthly_review_status":"Monthly review pending","positive_strengths":"Not recorded","support_needs":"Not recorded","possible_areas_of_interest":"Not recorded","talent_indicators":"Not recorded","recommended_support":"Not recorded","next_review_date":"Not scheduled","summary_text":"No development observation has been recorded yet.","urgent_flag_safe_summary":"No urgent follow-up flag in visible summary"}
+    responses=db.scalars(select(ChildDevelopmentObservationResponse).where(ChildDevelopmentObservationResponse.observation_id.in_([item.id for item in observations[:3]])).options()).all()
+    strengths=[];support=[];talents=[]
+    for response in responses:
+        indicator=response.indicator
+        if not indicator or indicator.is_sensitive:continue
+        positive=response.value_boolean is True or response.value_number in (4,5) or response.value_text in {"Strong","Good","Excellent","Active"}
+        if "Positive Strengths" in indicator.category and positive:strengths.append(indicator.indicator_name)
+        if "Support Needs" in indicator.category and response.value_boolean is True:support.append(indicator.indicator_name)
+        if ("Talent" in indicator.category or "Suitability" in indicator.category) and positive:talents.append(indicator.indicator_name)
+    month_reviewed=any(item.observation_frequency=="Monthly" and item.observation_date.year==today.year and item.observation_date.month==today.month for item in observations)
+    strengths=sorted(set(strengths))[:5];support=sorted(set(support))[:5];talents=sorted(set(talents))[:5]
+    summary_text=f"Latest observations show strengths in {', '.join(strengths[:3]) if strengths else 'current observed strengths'}. The child may benefit from {', '.join(support[:3]) if support else 'continued routine support'}. Possible areas of interest include {', '.join(talents[:3]) if talents else 'areas to observe further'}. Review is recommended as scheduled."
+    return {"latest_observation_date":latest.observation_date,"review_status":latest.review_status,"monthly_review_status":"Reviewed this month" if month_reviewed else "Monthly review pending","positive_strengths":", ".join(strengths) or "Not recorded","support_needs":", ".join(support) or "Not recorded","possible_areas_of_interest":", ".join(talents) or "Not recorded","talent_indicators":", ".join(talents) or "Not recorded","recommended_support":latest.recommended_support or "Not recorded","next_review_date":latest.next_review_date or "Not scheduled","summary_text":summary_text,"urgent_flag_safe_summary":"Follow-up required" if latest.urgent_flag else "No urgent follow-up flag in visible summary"}
 
 def build_full_child_profile(db:Session,child_id:int,roles:set[str])->dict:
     child=db.get(Child,child_id)
@@ -75,6 +95,8 @@ def build_full_child_profile(db:Session,child_id:int,roles:set[str])->dict:
     sections.append({"key":"case_management","title":"10. Case Management Summary","fields":case_fields,"empty":"No case profile found." if not case_profile else None})
     sections.append({"key":"daily_attendance","title":"11. Daily Attendance Summary","fields":_fields(today_status=today_status or "Not marked",current_month_present_days=present_days,current_month_absent_days=daily_counts.get("Absent",0),current_month_leave_days=leave_days,current_month_attendance_percentage=f"{present_days*100/marked_days:.2f}%" if marked_days else "Not available"),"columns":["Status","Days"],"rows":[[status,count] for status,count in sorted(daily_counts.items())],"empty":"No daily attendance records found for the current month." if not daily_counts else None})
     sections.append({"key":"visitor_history","title":"12. Visitor / Meeting History Summary","fields":_fields(total_visits=sum(visit_counts.values()),completed_visits=visit_counts.get("Completed",0),scheduled_visits=visit_counts.get("Scheduled",0),checked_in_visits=visit_counts.get("Checked In",0),cancelled_visits=visit_counts.get("Cancelled",0)),"columns":["Visit Date","Visitor","Relationship","Purpose","Status"],"rows":[[visit.visit_date,visitor.full_name if not viewer else "Restricted",visitor.relationship_to_child,visit.meeting_purpose,visit.visit_status] for visit,visitor in latest_visits],"empty":"No visitor or child meeting records found." if not latest_visits else None})
+    development=_safe_development_summary(db,child_id,today)
+    sections.append({"key":"development","title":"13. Development, Behavior & Talent Summary","fields":_fields(latest_observation_date=development["latest_observation_date"],latest_review_status=development["review_status"],monthly_review_status=development["monthly_review_status"],positive_strengths=development["positive_strengths"],support_needs=development["support_needs"],possible_areas_of_interest=development["possible_areas_of_interest"],talent_indicators=development["talent_indicators"],recommended_support=development["recommended_support"],next_review_date=development["next_review_date"],follow_up_summary=development["urgent_flag_safe_summary"]),"note":development["summary_text"]})
     identity={"Child Name":child.full_name,"Child ID":child.child_id,"Admission File No":child.admission_file_no,"Status":child.status,"Gender":child.gender,"Age":_age(child.date_of_birth,today),"Date of Birth":child.date_of_birth,"Admission Date":child.admission_date,"District":child.district,"Province":child.province}
     child_photo=next((document.file_path for document in reversed(documents) if document.document_type=="Child Photo"),None)
     return {"child_id":child.id,"identity":identity,"sections":sections,"child_photo_path":child_photo}
