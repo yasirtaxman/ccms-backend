@@ -8,6 +8,7 @@ from pydantic import (
     ConfigDict,
     EmailStr,
     Field,
+    TypeAdapter,
     field_validator,
     model_validator,
 )
@@ -42,6 +43,7 @@ class SponsorshipType(str, Enum):
 
 
 MOBILE_PATTERN = r"^\+?[0-9][0-9 ()-]{6,28}$"
+EMAIL_ADAPTER = TypeAdapter(EmailStr)
 
 
 class SponsorCreate(BaseModel):
@@ -135,6 +137,16 @@ class SponsorResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def suppress_invalid_legacy_email(cls, value: str | None) -> str | None:
+        if value in (None, ""):
+            return None
+        try:
+            return str(EMAIL_ADAPTER.validate_python(value))
+        except ValueError:
+            return None
 
 
 class ChildSponsorshipCreate(BaseModel):

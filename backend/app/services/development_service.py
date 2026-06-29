@@ -22,6 +22,7 @@ CATEGORIES = [
 ]
 RATING = ["1 Poor", "2 Needs Improvement", "3 Satisfactory", "4 Good", "5 Excellent"]
 SAFE_DESCRIPTION = "Structured welfare observation for support and guidance. This is not a medical or psychological assessment."
+INPUT_TYPE_ALIASES = {"rating": "rating_1_to_5"}
 
 
 RAW_INDICATORS: list[tuple[str, str, str, list[str] | None, bool]] = [
@@ -51,12 +52,35 @@ def code_for(index: int, name: str) -> str:
     return f"DEV_{index:03d}_{cleaned[:40]}"
 
 
+def normalize_indicator_input_type(value: str | None) -> str | None:
+    return INPUT_TYPE_ALIASES.get(value, value)
+
+
+def normalize_indicator_record(indicator: DevelopmentIndicator | None) -> DevelopmentIndicator | None:
+    if indicator is not None:
+        indicator.input_type = normalize_indicator_input_type(indicator.input_type)
+    return indicator
+
+
+def normalize_observation_indicators(item: ChildDevelopmentObservation) -> ChildDevelopmentObservation:
+    for response in item.responses:
+        normalize_indicator_record(response.indicator)
+    return item
+
+
 def seed_development_indicators(db: Session) -> None:
-    existing = {item.indicator_code for item in db.scalars(select(DevelopmentIndicator)).all()}
+    existing_items = db.scalars(select(DevelopmentIndicator)).all()
+    existing_by_code = {item.indicator_code: item for item in existing_items}
+    for item in existing_items:
+        normalize_indicator_record(item)
     for index, (category, name, input_type, options, sensitive) in enumerate(RAW_INDICATORS, start=1):
         code = code_for(index, name)
-        if code not in existing:
-            db.add(DevelopmentIndicator(indicator_code=code, indicator_name=name, category=category, description=SAFE_DESCRIPTION, input_type=input_type, options_json=options, is_required=False, is_active=True, is_sensitive=sensitive, sort_order=index))
+        normalized_input_type = normalize_indicator_input_type(input_type)
+        existing = existing_by_code.get(code)
+        if existing is None:
+            db.add(DevelopmentIndicator(indicator_code=code, indicator_name=name, category=category, description=SAFE_DESCRIPTION, input_type=normalized_input_type, options_json=options, is_required=False, is_active=True, is_sensitive=sensitive, sort_order=index))
+        else:
+            existing.input_type = normalize_indicator_input_type(existing.input_type)
     db.flush()
 
 
@@ -69,6 +93,7 @@ def can_view_sensitive(user: User) -> bool:
 
 
 def clean_observation(item: ChildDevelopmentObservation, user: User) -> ChildDevelopmentObservation:
+    normalize_observation_indicators(item)
     if not can_view_sensitive(user):
         item.private_notes = None
         item.responses = [response for response in item.responses if not response.indicator or not response.indicator.is_sensitive]

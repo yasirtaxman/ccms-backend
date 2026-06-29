@@ -23,7 +23,13 @@ export function DevelopmentIndicatorsAdmin() {
   const [view, setView] = useState<DevelopmentIndicator | null>(null);
   const [edit, setEdit] = useState<DevelopmentIndicator | null>(null);
 
-  const load = () => developmentApi.indicators(true).then(setRows).catch((e) => setError(apiErrorMessage(e)));
+  const load = () => {
+    setError("");
+    return developmentApi.indicators(true).then((items) => {
+      setRows(items);
+      setError("");
+    }).catch((e) => setError(apiErrorMessage(e)));
+  };
   useEffect(() => { void load(); }, []);
 
   const categories = Array.from(new Set(rows.map((row) => row.category))).sort();
@@ -75,7 +81,7 @@ export function DevelopmentIndicatorsAdmin() {
       <div className="table-shell">
         <table className="data-table">
           <thead><tr><th>Indicator</th><th>Code</th><th>Category</th><th>Input Type</th><th>Required</th><th>Sensitive</th><th>Status</th><th>Options Preview</th><th>Actions</th></tr></thead>
-          <tbody>{filtered.map((row) => <tr key={row.id}><td>{row.indicator_name}</td><td>{row.indicator_code}</td><td>{row.category}</td><td>{row.input_type.replaceAll("_", " ")}</td><td>{row.is_required ? "Yes" : "No"}</td><td>{row.is_sensitive ? "Yes" : "No"}</td><td>{row.is_active ? "Active" : "Inactive"}</td><td>{Array.isArray(row.options_json) ? row.options_json.slice(0, 3).join(", ") : "Not recorded"}</td><td><div className="flex flex-wrap gap-1"><button className="icon-button" title="View" onClick={() => setView(row)}><Eye size={15} /></button>{canManage && <button className="icon-button" title="Edit" onClick={() => setEdit(row)}><Pencil size={15} /></button>}{canManage && <button className="secondary-button px-2 py-1 text-xs" onClick={() => toggle(row)}>{row.is_active ? "Deactivate" : "Activate"}</button>}</div></td></tr>)}</tbody>
+          <tbody>{filtered.map((row) => <tr key={row.id}><td>{row.indicator_name}</td><td>{row.indicator_code}</td><td>{row.category}</td><td>{formatInputType(row.input_type)}</td><td>{row.is_required ? "Yes" : "No"}</td><td>{row.is_sensitive ? "Yes" : "No"}</td><td>{row.is_active ? "Active" : "Inactive"}</td><td>{Array.isArray(row.options_json) ? row.options_json.slice(0, 3).join(", ") : "Not recorded"}</td><td><div className="flex flex-wrap gap-1"><button className="icon-button" title="View" onClick={() => setView(row)}><Eye size={15} /></button>{canManage && <button className="icon-button" title="Edit" onClick={() => setEdit(row)}><Pencil size={15} /></button>}{canManage && <button className="secondary-button px-2 py-1 text-xs" onClick={() => toggle(row)}>{row.is_active ? "Deactivate" : "Activate"}</button>}</div></td></tr>)}</tbody>
         </table>
       </div>
     </section>
@@ -86,6 +92,7 @@ export function DevelopmentIndicatorsAdmin() {
 
 function Card({ label, value }: { label: string; value: number }) { return <div className="metric-card"><div><p>{label}</p><strong>{value}</strong></div></div>; }
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) { return <label className="form-field"><span>{label}</span><select className="field-control" value={value} onChange={(e) => onChange(e.target.value)}>{options.map((option) => <option key={option} value={option}>{option || "All"}</option>)}</select></label>; }
+function formatInputType(value: string) { return value === "rating_1_to_5" ? "Rating 1 to 5" : value.replaceAll("_", " "); }
 function Details({ row, onClose }: { row: DevelopmentIndicator; onClose: () => void }) { return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4"><section className="w-full max-w-2xl rounded-2xl bg-white p-6"><div className="flex justify-between gap-3"><h2 className="text-xl font-bold">{row.indicator_name}</h2><button className="secondary-button" onClick={onClose}>Close</button></div><dl className="mt-5 grid gap-3 sm:grid-cols-2">{Object.entries(row).map(([key, value]) => <div className="rounded-lg bg-slate-50 p-3" key={key}><dt className="text-xs font-semibold uppercase text-slate-400">{key.replaceAll("_", " ")}</dt><dd className="mt-1 break-words text-sm font-medium">{Array.isArray(value) ? value.join(", ") : cleanDisplay(value)}</dd></div>)}</dl></section></div>; }
 function EditIndicator({ row, onClose, onSaved }: { row: DevelopmentIndicator; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState(row);

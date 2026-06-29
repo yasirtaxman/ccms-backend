@@ -27,6 +27,13 @@ class DevelopmentIndicatorBase(BaseModel):
     is_sensitive: bool = False
     sort_order: int = 0
 
+    @field_validator("input_type", mode="before")
+    @classmethod
+    def normalize_input_type(cls, value: str) -> str:
+        if value == "rating":
+            return "rating_1_to_5"
+        return value
+
 
 class DevelopmentIndicatorCreate(DevelopmentIndicatorBase):
     indicator_code: str = Field(min_length=2, max_length=80)
