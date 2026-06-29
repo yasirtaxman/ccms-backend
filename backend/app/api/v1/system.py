@@ -32,6 +32,31 @@ def system_checks(db: Session):
     except Exception: checks["alembic"]={"status":"error"}
     return checks
 
+def public_system_checks(checks: dict) -> dict:
+    safe_checks = {}
+    for name, value in checks.items():
+        safe_value = {"status": value.get("status", "unknown")}
+        if name == "alembic" and value.get("revision"):
+            safe_value["revision"] = value["revision"]
+        safe_checks[name] = safe_value
+    return safe_checks
+
+@router.get("/health/readiness")
+def public_readiness(db: Session = Depends(get_db)):
+    checks = system_checks(db)
+    status = "ready" if all(v["status"] == "ok" for v in checks.values()) else "degraded"
+    return success_response(
+        "System readiness evaluated",
+        {
+            "status": status,
+            "service": settings.PROJECT_NAME,
+            "environment": settings.ENVIRONMENT,
+            "api_version": "1.0.0",
+            "checks": public_system_checks(checks),
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
+
 @router.get("/system/readiness")
 def readiness(db:Session=Depends(get_db),_:User=Depends(require_admin)):
     checks=system_checks(db); status="ready" if all(v["status"]=="ok" for v in checks.values()) else "degraded"

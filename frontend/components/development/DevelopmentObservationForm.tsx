@@ -25,10 +25,12 @@ export function DevelopmentObservationForm({ observationId, childId }: { observa
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    setError("");
     Promise.all([childrenApi.list(), developmentApi.indicators(), observationId ? developmentApi.getObservation(observationId) : Promise.resolve(null as DevelopmentObservation | null)])
       .then(([kids, items, obs]) => {
         setChildren(kids);
         setIndicators(items);
+        setError("");
         if (obs) {
           setForm({ child_id: obs.child_id, observation_date: obs.observation_date, observation_period_start: obs.observation_period_start, observation_period_end: obs.observation_period_end, observation_frequency: obs.observation_frequency, observer_role: obs.observer_role, review_status: obs.review_status, next_review_date: obs.next_review_date, general_summary: obs.general_summary, recommended_support: obs.recommended_support, private_notes: obs.private_notes, responses: obs.responses });
           setResponses(Object.fromEntries(obs.responses.map((response) => [response.indicator_id, response])));

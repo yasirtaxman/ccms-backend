@@ -1,5 +1,7 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, TypeAdapter, field_validator
+
+EMAIL_ADAPTER = TypeAdapter(EmailStr)
 
 class UserAdminCreate(BaseModel):
     username: str = Field(min_length=3, max_length=100, pattern=r"^[A-Za-z0-9_.-]+$")
@@ -37,6 +39,16 @@ class UserAdminResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def suppress_invalid_legacy_email(cls, value: str | None) -> str | None:
+        if value in (None, ""):
+            return None
+        try:
+            return str(EMAIL_ADAPTER.validate_python(value))
+        except ValueError:
+            return None
 
 class UserListResponse(BaseModel):
     data: list[UserAdminResponse]
